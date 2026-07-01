@@ -3,7 +3,7 @@ import type { UserRepository } from '../../../../domain/repositories/user.reposi
 import { User } from '../../../../domain/entities/user.entity.js';
 import { PhoneNumber } from '../../../../domain/value-objects/phone-number.vo.js';
 
-interface UserDocument extends Document {
+interface UserDocument extends Document<string> {
   phoneNumber: string;
   name?: string;
   createdAt: Date;
@@ -12,6 +12,7 @@ interface UserDocument extends Document {
 
 const userSchema = new Schema<UserDocument>(
   {
+    _id: { type: String, required: true },
     phoneNumber: { type: String, required: true, unique: true },
     name: { type: String },
   },

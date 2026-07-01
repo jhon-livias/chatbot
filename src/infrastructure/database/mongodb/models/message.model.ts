@@ -1,6 +1,6 @@
 import { Schema, model, type Document } from 'mongoose';
 
-export interface MessageDocument extends Document {
+export interface MessageDocument extends Document<string> {
   conversationId: string;
   externalId?: string;
   role: 'user' | 'assistant' | 'system';
@@ -12,6 +12,7 @@ export interface MessageDocument extends Document {
 
 const messageSchema = new Schema<MessageDocument>(
   {
+    _id: { type: String, required: true },
     conversationId: { type: String, required: true, index: true },
     externalId: { type: String, sparse: true },
     role: {

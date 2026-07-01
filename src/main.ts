@@ -6,7 +6,8 @@ import { DeepSeekService } from './infrastructure/ai/deepseek/deepseek.service.j
 import { loadDeepSeekConfig } from './infrastructure/ai/deepseek/deepseek.config.js';
 import { TemplateService } from './infrastructure/ai/template/template.service.js';
 import { MetaWhatsAppAdapter } from './infrastructure/webhooks/meta/meta-whatsapp.adapter.js';
-import { MetaWhatsAppController } from './infrastructure/webhooks/meta/meta-whatsapp.controller.js';
+import { WhatsAppController } from './infrastructure/webhooks/meta/whatsapp.controller.js';
+import { WhatsAppParserService } from './infrastructure/webhooks/meta/whatsapp-parser.service.js';
 import { HandleIncomingMessageUseCase } from './application/use-cases/handle-incoming-message/handle-incoming-message.usecase.js';
 import { createWebhookRouter } from './infrastructure/http/routes/webhook.routes.js';
 import { createServer } from './infrastructure/http/server.js';
@@ -51,12 +52,14 @@ async function bootstrap(): Promise<void> {
   );
 
   // ── Controllers & Routes (Infrastructure/HTTP) ────────────────────────────
-  const metaController = new MetaWhatsAppController(
+  const whatsAppParser = new WhatsAppParserService();
+  const whatsAppController = new WhatsAppController(
+    whatsAppParser,
     handleIncomingMessage,
     process.env['META_WEBHOOK_VERIFY_TOKEN'] ?? '',
   );
 
-  const webhookRouter = createWebhookRouter(metaController);
+  const webhookRouter = createWebhookRouter(whatsAppController);
 
   // ── HTTP Server ────────────────────────────────────────────────────────────
   createServer(webhookRouter, {

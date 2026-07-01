@@ -1,6 +1,6 @@
 import { Schema, model, type Document } from 'mongoose';
 
-export interface ConversationDocument extends Document {
+export interface ConversationDocument extends Document<string> {
   userId: string;
   phoneNumber: string;
   status: 'active' | 'idle' | 'closed';
@@ -11,6 +11,7 @@ export interface ConversationDocument extends Document {
 
 const conversationSchema = new Schema<ConversationDocument>(
   {
+    _id: { type: String, required: true },
     userId: { type: String, required: true, index: true },
     phoneNumber: { type: String, required: true, index: true },
     status: {

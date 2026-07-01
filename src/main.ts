@@ -2,7 +2,9 @@ import { connectMongoDB } from './infrastructure/database/mongodb/connection.js'
 import { ConversationMongoRepository } from './infrastructure/database/mongodb/repositories/conversation.mongo-repository.js';
 import { UserMongoRepository } from './infrastructure/database/mongodb/repositories/user.mongo-repository.js';
 import { DeepSeekAdapter } from './infrastructure/ai/deepseek/deepseek.adapter.js';
+import { DeepSeekService } from './infrastructure/ai/deepseek/deepseek.service.js';
 import { loadDeepSeekConfig } from './infrastructure/ai/deepseek/deepseek.config.js';
+import { TemplateService } from './infrastructure/ai/template/template.service.js';
 import { MetaWhatsAppAdapter } from './infrastructure/webhooks/meta/meta-whatsapp.adapter.js';
 import { MetaWhatsAppController } from './infrastructure/webhooks/meta/meta-whatsapp.controller.js';
 import { HandleIncomingMessageUseCase } from './application/use-cases/handle-incoming-message/handle-incoming-message.usecase.js';
@@ -23,8 +25,14 @@ async function bootstrap(): Promise<void> {
   const conversationRepo = new ConversationMongoRepository();
   const userRepo = new UserMongoRepository();
 
-  // ── AI Adapter (Infrastructure) ───────────────────────────────────────────
-  const deepSeekAdapter = new DeepSeekAdapter(loadDeepSeekConfig());
+  // ── AI (Infrastructure) ───────────────────────────────────────────────────
+  const deepSeekConfig = loadDeepSeekConfig();
+  const templateService = new TemplateService();
+  // DeepSeekAdapter: implementa AiProviderPort (usado por use-cases existentes)
+  const deepSeekAdapter = new DeepSeekAdapter(deepSeekConfig);
+  // DeepSeekService: implementa IIAService (Motor de IA con templates + retry + fetch nativo)
+  const deepSeekService = new DeepSeekService(deepSeekConfig, templateService);
+  logger.info('[Bootstrap] Motor de IA inicializado', { model: deepSeekConfig.model });
 
   // ── Messaging Adapter (Infrastructure) ────────────────────────────────────
   const metaAdapter = new MetaWhatsAppAdapter({

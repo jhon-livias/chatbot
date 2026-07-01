@@ -1,18 +1,13 @@
 name: chatbot-uprit
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  Red interna aislada. Todos los servicios se comunican por nombre de servicio.
-#  Nada del interior es accesible desde el host salvo los puertos publicados.
-# ─────────────────────────────────────────────────────────────────────────────
 networks:
   chatbot-net:
     driver: bridge
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  Volúmenes persistentes
-# ─────────────────────────────────────────────────────────────────────────────
 volumes:
   logs-data:
+  loki-data:
+  grafana-data:
 
 services:
 
@@ -23,37 +18,33 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      # Construye solo el stage final de producción
       target: production
 
     container_name: chatbot-uprit-app
     image: chatbot-uprit:latest
-
-    # Alta disponibilidad: reinicia el contenedor salvo que se detenga
-    # manualmente con `docker compose stop` o `docker compose down`
     restart: unless-stopped
 
-    # Carga todas las variables del archivo .env (nunca se incluyen en la imagen)
     env_file:
       - .env
 
-    # Sobreescribe / garantiza el modo de producción independientemente del .env
     environment:
       NODE_ENV: production
+      SERVICE_NAME: chatbot-uprit
 
     ports:
-      # HOST_PORT:CONTAINER_PORT — el puerto del host se lee del .env
-      - "${PORT:-3000}:3000"
+      # Grafana ocupa el puerto 3000 del host — la API se expone en API_PORT
+      - "${API_PORT:-8080}:3000"
 
     networks:
       - chatbot-net
 
     volumes:
-      # Persistir logs de Winston si se configura transporte de archivo
       - logs-data:/app/logs
 
-    # PID 1 correcto: Docker usa tini (incluido en imágenes oficiales de Node)
-    # para manejar señales SIGTERM/SIGINT y procesos zombie correctamente
+    labels:
+      logging: promtail
+      app: chatbot-uprit
+
     init: true
 
     healthcheck:
@@ -63,8 +54,6 @@ services:
       retries: 3
       start_period: 15s
 
-    # Límites de recursos recomendados para producción en VPS pequeño
-    # Ajusta según el tamaño de tu instancia
     deploy:
       resources:
         limits:
@@ -74,18 +63,91 @@ services:
           cpus: "0.25"
           memory: 128M
 
+    # json-file: Promtail lee los logs vía Docker socket + service discovery
     logging:
-      driver: "json-file"
+      driver: json-file
       options:
         max-size: "10m"
         max-file: "5"
+        tag: "{{.Name}}"
+
+    depends_on:
+      loki:
+        condition: service_started
 
   # ───────────────────────────────────────────────────────────────────────────
-  #  MongoDB LOCAL (opcional — solo para desarrollo sin Atlas)
-  #
-  #  Para activarlo descomenta este bloque y cambia en .env:
-  #    MONGODB_URI=mongodb://mongo:27017/chatbot_uprit
-  #    MONGODB_DB_NAME=chatbot_uprit
+  #  LOKI — Almacén e indexador de logs
+  # ───────────────────────────────────────────────────────────────────────────
+  loki:
+    image: grafana/loki:3.4.2
+    container_name: chatbot-uprit-loki
+    restart: unless-stopped
+    command: -config.file=/etc/loki/loki-config.yaml
+    volumes:
+      - ./deploy/loki-config.yaml:/etc/loki/loki-config.yaml:ro
+      - loki-data:/loki
+    networks:
+      - chatbot-net
+    ports:
+      - "3100:3100"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3100/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ───────────────────────────────────────────────────────────────────────────
+  #  PROMTAIL — Recolector de logs (Docker → Loki)
+  # ───────────────────────────────────────────────────────────────────────────
+  promtail:
+    image: grafana/promtail:3.4.2
+    container_name: chatbot-uprit-promtail
+    restart: unless-stopped
+    command: -config.file=/etc/promtail/promtail-config.yaml
+    volumes:
+      - ./deploy/promtail-config.yaml:/etc/promtail/promtail-config.yaml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    networks:
+      - chatbot-net
+    depends_on:
+      loki:
+        condition: service_healthy
+
+  # ───────────────────────────────────────────────────────────────────────────
+  #  GRAFANA — Visualización y consulta de logs
+  # ───────────────────────────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:11.5.2
+    container_name: chatbot-uprit-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:3000}
+      GF_LOG_MODE: console
+      GF_LOG_LEVEL: warn
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+    networks:
+      - chatbot-net
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    depends_on:
+      loki:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ───────────────────────────────────────────────────────────────────────────
+  #  MongoDB LOCAL (opcional — descomentar para desarrollo sin Atlas)
   # ───────────────────────────────────────────────────────────────────────────
   # mongo:
   #   image: mongo:7-jammy
@@ -99,13 +161,3 @@ services:
   #     - mongo-data:/data/db
   #   networks:
   #     - chatbot-net
-  #   healthcheck:
-  #     test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
-  #     interval: 30s
-  #     timeout: 5s
-  #     retries: 3
-  #     start_period: 20s
-
-# Para MongoDB local descomenta también este volumen:
-# volumes:
-#   mongo-data:

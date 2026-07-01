@@ -1,0 +1,96 @@
+name: Deploy to EC2
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-ec2
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > ~/.ssh/deploy.pem
+          chmod 400 ~/.ssh/deploy.pem
+          ssh-keyscan -H "${{ secrets.EC2_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Bootstrap or update server
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+          REMOTE_DIR: ${{ secrets.EC2_REMOTE_DIR }}
+          REPO_URL: https://github.com/${{ github.repository }}.git
+        run: |
+          REMOTE_DIR="${REMOTE_DIR:-/opt/chatbot-uprit}"
+          EC2_USER="${EC2_USER:-ubuntu}"
+
+          ssh -i ~/.ssh/deploy.pem -o ConnectTimeout=30 -o StrictHostKeyChecking=no \
+            "${EC2_USER}@${EC2_HOST}" bash -s <<EOF
+          set -euo pipefail
+
+          if ! command -v docker >/dev/null 2>&1; then
+            curl -fsSL https://get.docker.com | sudo sh
+            sudo usermod -aG docker "\$USER"
+          fi
+
+          if ! docker compose version >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y docker-compose-plugin git nginx certbot python3-certbot-nginx
+          fi
+
+          if [[ ! -d "${REMOTE_DIR}/.git" ]]; then
+            sudo mkdir -p "${REMOTE_DIR}"
+            sudo chown "\$USER:\$USER" "${REMOTE_DIR}"
+            git clone "${REPO_URL}" "${REMOTE_DIR}"
+          fi
+
+          cd "${REMOTE_DIR}"
+          git fetch origin main
+          git reset --hard origin/main
+
+          if [[ ! -f .env ]]; then
+            cp .env.example .env
+            echo "WARNING: created .env from example — configure production secrets on the server."
+          fi
+
+          docker compose build app
+          docker compose up -d app
+
+          sudo cp deploy/nginx/chatbot.uprit.edu.pe.conf /etc/nginx/sites-available/chatbot.uprit.edu.pe.conf
+          sudo ln -sf /etc/nginx/sites-available/chatbot.uprit.edu.pe.conf /etc/nginx/sites-enabled/chatbot.uprit.edu.pe.conf
+          sudo rm -f /etc/nginx/sites-enabled/default
+          sudo nginx -t
+          sudo systemctl enable nginx
+          sudo systemctl reload nginx
+
+          sleep 5
+          curl -fsS http://127.0.0.1:8080/health
+          docker compose ps app
+          EOF
+
+      - name: Verify public webhook (optional)
+        if: ${{ secrets.WEBHOOK_VERIFY_TOKEN != '' }}
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          WEBHOOK_VERIFY_TOKEN: ${{ secrets.WEBHOOK_VERIFY_TOKEN }}
+        run: |
+          CHALLENGE="gh-actions-$(date +%s)"
+          URL="https://chatbot.uprit.edu.pe/webhook?hub.mode=subscribe&hub.verify_token=${WEBHOOK_VERIFY_TOKEN}&hub.challenge=${CHALLENGE}"
+          RESPONSE="$(curl -fsS --max-time 20 "$URL" || true)"
+          echo "Response: $RESPONSE"
+          if [[ "$RESPONSE" == "$CHALLENGE" ]]; then
+            echo "Webhook verification OK"
+          else
+            echo "Webhook verification skipped or failed (check DNS/SSL/origin)"
+          fi

@@ -16,7 +16,7 @@ const userSchema = new Schema<UserDocument>(
     phoneNumber: { type: String, required: true, unique: true },
     name: { type: String },
   },
-  { timestamps: true, versionKey: false },
+  { timestamps: true, versionKey: false, collection: 'users' },
 );
 
 const UserModel = model<UserDocument>('User', userSchema);

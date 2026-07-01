@@ -22,10 +22,11 @@ export interface IntentMetaData {
   filterType: string | null;
 
   /**
-   * Valor concreto del filtro (ej. "PREGRADO", "VIRTUAL", "Ingeniería").
-   * `null` cuando filterType es null o no se detectó un valor.
+   * Valores concretos del filtro como array.
+   * Ej. ["PREGRADO"], ["VIRTUAL", "ONSITE"], []
+   * Array vacío cuando no aplica ningún filtro.
    */
-  filterValue: string | null;
+  filterValue: string[];
 }
 
 // ── Output — Value Object inmutable ──────────────────────────────────────
@@ -40,13 +41,20 @@ export class ParsedIntent {
    */
   readonly careerId: string | null;
 
-  /** Metadatos auxiliares para filtrar o contextualizar la respuesta */
-  readonly metaData: Readonly<IntentMetaData>;
+  /**
+   * Metadatos auxiliares para filtrar o contextualizar la respuesta.
+   * Puede ser `undefined` si el LLM no incluyó el campo.
+   */
+  readonly metaData: Readonly<IntentMetaData> | undefined;
 
-  constructor(intent: IntencionCodigo, careerId: string | null, metaData: IntentMetaData) {
+  constructor(
+    intent: IntencionCodigo,
+    careerId: string | null,
+    metaData: IntentMetaData | undefined,
+  ) {
     this.intent = intent;
     this.careerId = careerId;
-    this.metaData = Object.freeze({ ...metaData });
+    this.metaData = metaData !== undefined ? Object.freeze({ ...metaData }) : undefined;
     Object.freeze(this);
   }
 
@@ -57,14 +65,18 @@ export class ParsedIntent {
 
   /** True si se debe aplicar algún tipo de filtro sobre los programas */
   hasFilter(): boolean {
-    return this.metaData.filterType !== null && this.metaData.filterValue !== null;
+    return (
+      this.metaData !== undefined &&
+      this.metaData.filterType !== null &&
+      this.metaData.filterValue.length > 0
+    );
   }
 
   toJSON(): Record<string, unknown> {
     return {
       intent: this.intent,
       careerId: this.careerId,
-      metaData: this.metaData,
+      ...(this.metaData !== undefined && { metaData: this.metaData }),
     };
   }
 }

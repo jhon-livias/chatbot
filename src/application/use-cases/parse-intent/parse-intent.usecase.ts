@@ -1,62 +1,78 @@
-import { z } from 'zod';
+import { z, ZodError } from 'zod';
 import { IntencionCodigo } from '../../../domain/enums/intencion-codigo.enum.js';
 import { IntentParseError } from '../../exceptions/intent-parse.exception.js';
 import { ParsedIntent } from './parse-intent.dto.js';
 import type { ParseIntentDto, ParseIntentResult } from './parse-intent.dto.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  SCHEMA DE VALIDACIÓN — Zod
+//  SCHEMA ESTRICTO — Zod
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Cualquier string vacío o con solo espacios se normaliza a `null`.
- * Esto protege contra respuestas del LLM del tipo `"filterValue": ""`.
+ * Normaliza un string: recorta espacios y convierte "" en null.
+ * Protege contra respuestas del LLM como `"filterType": "  "`.
  */
-const nullableString = z
+const cleanString = z
   .string()
-  .transform((v) => (v.trim() === '' ? null : v.trim()))
-  .nullable()
-  .catch(null);
+  .transform((v) => v.trim())
+  .transform((v) => (v === '' ? null : v));
 
-const IntentMetaDataSchema = z.object({
-  filterType: nullableString,
-  filterValue: nullableString,
-});
+const IntentMetaDataSchema = z
+  .object({
+    /** "tipo" | "modalidad" | "facultad" | "nombre" | null */
+    filterType: cleanString.nullable().default(null),
+    /**
+     * Array de valores de filtro.
+     * El LLM puede enviar un string suelto o un array; normalizamos ambos.
+     */
+    filterValue: z
+      .union([
+        z.array(z.string()),
+        // Tolerancia: si el LLM manda un string en lugar de array, lo envolvemos
+        z.string().transform((v) => (v.trim() === '' ? [] : [v.trim()])),
+      ])
+      .default([]),
+  })
+  .optional();
 
-const ParsedIntentSchema = z.object({
-  /** El LLM puede devolver el intent con distinto casing — normalizamos */
-  intent: z
-    .string()
-    .transform((v) => v.trim().toUpperCase())
-    .pipe(z.nativeEnum(IntencionCodigo, {
-      errorMap: () => ({
-        message: `Valor de 'intent' no reconocido. Valores válidos: ${Object.values(IntencionCodigo).join(', ')}`,
-      }),
-    })),
+const ParsedIntentSchema = z
+  .object({
+    /**
+     * El LLM puede enviar el intent en cualquier casing.
+     * Lo normalizamos a UPPERCASE antes de validar contra el enum.
+     */
+    intent: z
+      .string({ required_error: "El campo 'intent' es requerido" })
+      .transform((v) => v.trim().toUpperCase())
+      .pipe(
+        z.nativeEnum(IntencionCodigo, {
+          errorMap: () => ({
+            message: `Valor de 'intent' no reconocido. Válidos: ${Object.values(IntencionCodigo).join(', ')}`,
+          }),
+        }),
+      ),
 
-  careerId: nullableString,
+    /** String con el slug/ID del programa, o null si no aplica */
+    careerId: cleanString.nullable().optional().default(null),
 
-  metaData: IntentMetaDataSchema,
-});
+    /** Metadatos para filtrar resultados — campo completamente opcional */
+    metaData: IntentMetaDataSchema,
+  })
+  .strict(); // rechaza campos desconocidos en el root
 
-type RawParsedIntent = z.infer<typeof ParsedIntentSchema>;
+type ValidatedIntent = z.infer<typeof ParsedIntentSchema>;
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  EXTRACTOR DE BLOQUE JSON
+//  EXTRACTOR DE BLOQUE JSON (conteo de llaves balanceadas)
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
  * Extrae el primer bloque `{ ... }` balanceado de un string arbitrario.
+ * Maneja correctamente strings JSON internos (con `"`, `\"`, `{`, `}`).
  *
- * Estrategia: conteo de llaves con manejo explícito de strings JSON
- * (para ignorar `{` y `}` que aparecen dentro de valores string).
- *
- * @returns `{ block, wasNoisy }` donde `wasNoisy` indica si había texto extra.
- * @throws `IntentParseError` si no se encuentra ningún bloque o está incompleto.
+ * @throws `IntentParseError` si no hay ningún `{` o el bloque no cierra.
  */
-function extractJsonBlock(
-  raw: string,
-): { block: string; wasNoisy: boolean } {
+function extractJsonBlock(raw: string): { block: string; wasNoisy: boolean } {
   const start = raw.indexOf('{');
 
   if (start === -1) {
@@ -74,24 +90,9 @@ function extractJsonBlock(
   for (let i = start; i < raw.length; i++) {
     const ch = raw[i] as string;
 
-    // Manejo de escape dentro de strings: \"
-    if (escapeNext) {
-      escapeNext = false;
-      continue;
-    }
-
-    if (ch === '\\' && inString) {
-      escapeNext = true;
-      continue;
-    }
-
-    // Entrar/salir de un valor string
-    if (ch === '"') {
-      inString = !inString;
-      continue;
-    }
-
-    // Ignorar todo dentro de un string
+    if (escapeNext) { escapeNext = false; continue; }
+    if (ch === '\\' && inString) { escapeNext = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
     if (inString) continue;
 
     if (ch === '{') {
@@ -106,7 +107,6 @@ function extractJsonBlock(
     }
   }
 
-  // Se encontró `{` pero el bloque nunca se cerró
   throw new IntentParseError(
     'El bloque JSON encontrado está incompleto (llaves sin cerrar)',
     'INCOMPLETE_JSON_BLOCK',
@@ -119,68 +119,74 @@ function extractJsonBlock(
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Parsea y valida la respuesta cruda del LLM cuando identifica la intención
- * del usuario. El LLM debe retornar un JSON con la estructura:
+ * Parsea y valida la respuesta cruda del LLM cuando identifica la intención.
  *
+ * JSON esperado del LLM:
  * ```json
  * {
  *   "intent": "INFORMACION_PROGRAMAS",
  *   "careerId": "ing-sistemas" | null,
  *   "metaData": {
  *     "filterType": "tipo" | null,
- *     "filterValue": "PREGRADO" | null
+ *     "filterValue": ["PREGRADO", "MAESTRIA"]
  *   }
  * }
  * ```
  *
- * El caso de uso tolera texto extra alrededor del bloque JSON (texto de
- * relleno, bloques de código markdown, etc.) y lanza `IntentParseError`
- * tipado ante cualquier fallo, permitiendo que el sistema decida reintentar.
+ * Tolerancias:
+ * - Texto extra alrededor del bloque JSON (markdown, frases de relleno del LLM)
+ * - `intent` en cualquier casing (normalizado a UPPERCASE)
+ * - `careerId` ausente o vacío (→ null)
+ * - `metaData` completamente ausente (→ undefined)
+ * - `filterValue` como string suelto en lugar de array (→ [string])
+ *
+ * Errores lanzados: `IntentParseError` con `reason` tipado para control
+ * del sistema de reintentos.
  */
 export class ParseIntentUseCase {
   execute(dto: ParseIntentDto): ParseIntentResult {
     const raw = dto.rawAiResponse;
 
-    // ── Paso 1: Limpiar el bloque JSON del ruido del LLM ─────────────────
+    // ── Paso 1: Extraer el bloque JSON limpiando ruido del LLM ───────────
     const { block, wasNoisy } = extractJsonBlock(raw);
 
-    // ── Paso 2: Parsear JSON ──────────────────────────────────────────────
+    // ── Paso 2: Parsear a objeto JavaScript ──────────────────────────────
     let parsed: unknown;
     try {
       parsed = JSON.parse(block);
     } catch (syntaxError) {
       throw new IntentParseError(
-        `El bloque JSON extraído no es JSON válido: ${(syntaxError as Error).message}`,
+        `El bloque JSON no es JSON válido: ${(syntaxError as SyntaxError).message}`,
         'INVALID_JSON_SYNTAX',
         raw,
       );
     }
 
-    // ── Paso 3: Validar estructura con Zod ───────────────────────────────
-    const validation = ParsedIntentSchema.safeParse(parsed);
+    // ── Paso 3: Validar y transformar con Zod (.parse lanza ZodError) ────
+    let data: ValidatedIntent;
+    try {
+      data = ParsedIntentSchema.parse(parsed);
+    } catch (err) {
+      if (err instanceof ZodError) {
+        const issues = err.issues
+          .map((i) => `[${i.path.join('.') || 'root'}] ${i.message}`)
+          .join(' | ');
 
-    if (!validation.success) {
-      const issues = validation.error.issues
-        .map((i) => `${i.path.join('.')}: ${i.message}`)
-        .join(' | ');
-
-      throw new IntentParseError(
-        `El JSON no cumple la estructura esperada — ${issues}`,
-        'SCHEMA_VALIDATION_FAILED',
-        raw,
-      );
+        throw new IntentParseError(
+          `Esquema inválido — ${issues}`,
+          'SCHEMA_VALIDATION_FAILED',
+          raw,
+        );
+      }
+      // Error inesperado — re-lanzar sin wrap
+      throw err;
     }
 
     // ── Paso 4: Construir el Value Object inmutable ───────────────────────
-    const data: RawParsedIntent = validation.data;
-
     const parsedIntent = new ParsedIntent(
       data.intent,
-      data.careerId,
-      {
-        filterType: data.metaData.filterType,
-        filterValue: data.metaData.filterValue,
-      },
+      data.careerId ?? null,
+      data.metaData,
     );
 
     return { parsedIntent, wasExtractedFromNoise: wasNoisy };

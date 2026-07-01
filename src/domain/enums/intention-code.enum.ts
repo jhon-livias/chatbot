@@ -1,9 +1,8 @@
 /**
- * Identificadores estables para las intenciones que el LLM devuelve al parsear
- * el mensaje del usuario (capa de aplicación). Distintos de los `type` almacenados
- * en la colección `funnel_intentions` (ej. IDENTIFY_NEED).
+ * Stable intent codes returned by the LLM when parsing user messages.
+ * Distinct from `type` values stored in the `funnel_intentions` collection (e.g. IDENTIFY_NEED).
  */
-export enum IntencionCodigo {
+export enum IntentionCode {
   IDENTIFICAR_INTENCION = 'IDENTIFICAR_INTENCION',
   INFORMACION_PROGRAMAS = 'INFORMACION_PROGRAMAS',
   PROCESO_ADMISION = 'PROCESO_ADMISION',

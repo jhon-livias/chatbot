@@ -1,14 +1,11 @@
 import { Schema, model, type HydratedDocument, type Types } from 'mongoose';
 
 /**
- * Contexto textual pre-procesado de programas académicos usado para
- * búsqueda semántica y enriquecimiento de prompts (RAG pipeline).
+ * Pre-processed program text used for semantic search and RAG prompt enrichment.
  */
 export interface IContextSourceDataDocument {
   _id: Types.ObjectId;
-  /** UUID del programa de origen */
   original_id: string;
-  /** Texto completo listo para inyectar en el prompt del LLM */
   full_text_content: string;
   program_name: string;
   updated_at: Date;

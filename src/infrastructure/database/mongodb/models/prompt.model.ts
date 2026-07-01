@@ -3,28 +3,14 @@ import type { PromptVariableEntry } from '../../../../domain/entities/prompt.ent
 
 export type { PromptVariableEntry };
 
-// ── Raw document interface (forma exacta del documento en MongoDB) ─────────
 export interface IPromptDocument {
   _id: Types.ObjectId;
-  /** Identificador de negocio (UUID) */
   id: string;
   title: string;
   active: boolean;
   funnelId: string;
   intentionId: string;
-  /**
-   * Plantilla Handlebars del prompt del sistema.
-   *
-   * Sintaxis soportada:
-   *   - Variables:        {{variable}}
-   *   - HTML sin escapar: {{{variable}}}
-   *   - Condicionales:    {{#if condicion}}...{{/if}}
-   *   - Iteración:        {{#each lista}}...{{/each}}
-   *   - Parciales:        {{> nombre_parcial}}
-   *   - Helpers:          {{helper argumento}}
-   */
   template: string;
-  /** Definición de variables dinámicas resueltas desde otras colecciones */
   variables: PromptVariableEntry[];
   userId: string;
   createdAt: Date;
@@ -33,7 +19,6 @@ export interface IPromptDocument {
 
 export type PromptDocument = HydratedDocument<IPromptDocument>;
 
-// ── Sub-schema ─────────────────────────────────────────────────────────────
 const promptVariableEntrySchema = new Schema<PromptVariableEntry>(
   {
     source: { type: String, required: true, trim: true },
@@ -44,18 +29,17 @@ const promptVariableEntrySchema = new Schema<PromptVariableEntry>(
   { _id: false },
 );
 
-// ── Schema ─────────────────────────────────────────────────────────────────
 const promptSchema = new Schema<IPromptDocument>(
   {
     id: {
       type: String,
-      required: [true, 'El id del prompt es requerido'],
+      required: [true, 'Prompt id is required'],
       unique: true,
       index: true,
     },
     title: {
       type: String,
-      required: [true, 'El título es requerido'],
+      required: [true, 'Title is required'],
       trim: true,
     },
     active: {
@@ -65,17 +49,17 @@ const promptSchema = new Schema<IPromptDocument>(
     },
     funnelId: {
       type: String,
-      required: [true, 'El funnelId es requerido'],
+      required: [true, 'funnelId is required'],
       index: true,
     },
     intentionId: {
       type: String,
-      required: [true, 'El intentionId es requerido'],
+      required: [true, 'intentionId is required'],
       index: true,
     },
     template: {
       type: String,
-      required: [true, 'El template del prompt es requerido'],
+      required: [true, 'Prompt template is required'],
       trim: true,
     },
     variables: {
@@ -84,7 +68,7 @@ const promptSchema = new Schema<IPromptDocument>(
     },
     userId: {
       type: String,
-      required: [true, 'El userId es requerido'],
+      required: [true, 'userId is required'],
       index: true,
     },
   },

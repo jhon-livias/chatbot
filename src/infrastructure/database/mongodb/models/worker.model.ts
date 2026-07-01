@@ -7,7 +7,6 @@ export interface WorkerSocialLink {
 
 export interface IWorkerDocument {
   _id: Types.ObjectId;
-  /** Identificador de negocio (UUID) */
   id: string;
   name: string;
   email: string;

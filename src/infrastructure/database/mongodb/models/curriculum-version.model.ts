@@ -13,7 +13,6 @@ export interface CurriculumCicleEntry {
 
 export interface ICurriculumVersionDocument {
   _id: Types.ObjectId;
-  /** Identificador de negocio (UUID) */
   id: string;
   careerId: string;
   description: string;

@@ -2,7 +2,6 @@ import { Schema, model, type HydratedDocument, type Types } from 'mongoose';
 
 export interface ILeadDocument {
   _id: Types.ObjectId;
-  /** Identificador de negocio (UUID) */
   id: string;
   documentType: string;
   document: string;

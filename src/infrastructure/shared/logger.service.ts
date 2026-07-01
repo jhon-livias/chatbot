@@ -26,7 +26,6 @@ function createPinoInstance(bindings: LogContext = {}): PinoLogger {
     });
   }
 
-  // Producción: JSON puro en stdout — indexable por Promtail/Loki
   return pino({
     level: process.env['LOG_LEVEL'] ?? 'info',
     base,
@@ -75,5 +74,4 @@ export class LoggerService implements ILogger {
   }
 }
 
-/** Instancia singleton usada en toda la aplicación */
 export const logger: ILogger = new LoggerService();

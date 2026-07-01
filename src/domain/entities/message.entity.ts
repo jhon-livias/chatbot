@@ -14,6 +14,9 @@ export interface MessageProps {
   metadata?: Record<string, unknown>;
 }
 
+/**
+ * Domain entity representing a message within a conversation.
+ */
 export class Message {
   readonly id: MessageId;
   readonly conversationId: string;
@@ -37,7 +40,7 @@ export class Message {
 
   static create(props: MessageProps): Message {
     if (!props.content.trim()) {
-      throw new Error('El contenido del mensaje no puede estar vacío');
+      throw new Error('Message content cannot be empty');
     }
     return new Message(props);
   }

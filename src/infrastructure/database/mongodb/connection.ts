@@ -9,25 +9,19 @@ export interface MongoConfig {
 }
 
 /**
- * Conecta a MongoDB (local o Atlas).
- *
- * URI local:  mongodb://localhost:27017/chatbot_uprit
- * URI Atlas:  mongodb+srv://<user>:<password>@<cluster>.mongodb.net/?retryWrites=true&w=majority
- *
- * Con `mongodb+srv://`, Mongoose activa TLS automáticamente y hereda
- * `retryWrites` y `w` desde la cadena de conexión de Atlas.
+ * Connects to MongoDB (local or Atlas).
  */
 export async function connectMongoDB(config: MongoConfig): Promise<void> {
   const isAtlas = config.uri.startsWith('mongodb+srv://');
 
   mongoose.connection.on('connected', () =>
-    logger.info(`[MongoDB] Conectado a "${config.dbName}" ${isAtlas ? '(Atlas)' : '(local)'}`),
+    logger.info(`[MongoDB] Connected to "${config.dbName}" ${isAtlas ? '(Atlas)' : '(local)'}`),
   );
   mongoose.connection.on('error', (err) =>
-    logger.error('[MongoDB] Error de conexión', { error: err }),
+    logger.error('[MongoDB] Connection error', { error: err }),
   );
   mongoose.connection.on('disconnected', () =>
-    logger.warn('[MongoDB] Desconectado'),
+    logger.warn('[MongoDB] Disconnected'),
   );
 
   await mongoose.connect(config.uri, {
@@ -36,7 +30,6 @@ export async function connectMongoDB(config: MongoConfig): Promise<void> {
     minPoolSize: config.minPoolSize ?? 2,
     serverSelectionTimeoutMS: 10_000,
     socketTimeoutMS: 45_000,
-    // Atlas requiere estos flags; para local no tienen efecto negativo
     retryWrites: true,
     writeConcern: { w: 'majority' },
   });
@@ -44,5 +37,5 @@ export async function connectMongoDB(config: MongoConfig): Promise<void> {
 
 export async function disconnectMongoDB(): Promise<void> {
   await mongoose.disconnect();
-  logger.info('[MongoDB] Conexión cerrada correctamente');
+  logger.info('[MongoDB] Connection closed successfully');
 }

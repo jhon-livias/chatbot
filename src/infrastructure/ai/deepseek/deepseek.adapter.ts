@@ -20,7 +20,9 @@ interface DeepSeekApiResponse {
   usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
 }
 
-/** Adaptador que implementa AiProviderPort usando la API de DeepSeek */
+/**
+ * Adapter that implements AiProviderPort using the DeepSeek API.
+ */
 export class DeepSeekAdapter implements AiProviderPort {
   private readonly client: AxiosInstance;
   private readonly config: DeepSeekConfig;
@@ -43,7 +45,7 @@ export class DeepSeekAdapter implements AiProviderPort {
   ): Promise<AiCompletionResult> {
     const model = options?.model ?? this.config.model;
 
-    logger.debug('[DeepSeek] Enviando solicitud', {
+    logger.debug('[DeepSeek] Sending request', {
       model,
       messageCount: messages.length,
     });
@@ -58,10 +60,10 @@ export class DeepSeekAdapter implements AiProviderPort {
 
     const choice = response.data.choices[0];
     if (!choice) {
-      throw new Error('[DeepSeek] La API no devolvió ninguna opción de respuesta');
+      throw new Error('[DeepSeek] API returned no response choices');
     }
 
-    logger.debug('[DeepSeek] Respuesta recibida', {
+    logger.debug('[DeepSeek] Response received', {
       tokens: response.data.usage.total_tokens,
       finishReason: choice.finish_reason,
     });

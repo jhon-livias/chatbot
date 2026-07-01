@@ -1,6 +1,8 @@
 import { DomainException } from '../exceptions/domain.exception.js';
 
-/** Valor inmutable que representa un número de teléfono en formato E.164 */
+/**
+ * Immutable value object representing a phone number in E.164 format.
+ */
 export class PhoneNumber {
   private static readonly E164_REGEX = /^\+[1-9]\d{7,14}$/;
 
@@ -14,7 +16,7 @@ export class PhoneNumber {
     const normalized = raw.trim().replace(/\s+/g, '');
     if (!PhoneNumber.E164_REGEX.test(normalized)) {
       throw new DomainException(
-        `Número de teléfono inválido: "${raw}". Debe estar en formato E.164 (ej. +5215512345678)`,
+        `Invalid phone number: "${raw}". Must be in E.164 format (e.g. +5215512345678)`,
       );
     }
     return new PhoneNumber(normalized);

@@ -8,7 +8,9 @@ export interface OutboundMessageResult {
   status: string;
 }
 
-/** Puerto que desacopla la capa de aplicación de cualquier proveedor de mensajería (WhatsApp, SMS, etc.) */
+/**
+ * Port that decouples the application layer from any messaging provider (WhatsApp, SMS, etc.).
+ */
 export interface MessagingProviderPort {
   sendTextMessage(message: OutboundTextMessage): Promise<OutboundMessageResult>;
 }

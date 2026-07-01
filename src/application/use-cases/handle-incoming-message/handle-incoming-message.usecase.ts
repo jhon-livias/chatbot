@@ -17,6 +17,9 @@ const CONTEXT_WINDOW_SIZE = 10;
 const SYSTEM_PROMPT =
   'Eres un asistente virtual de UPRIT. Responde de manera concisa, amable y en el mismo idioma que el usuario.';
 
+/**
+ * Orchestrates inbound WhatsApp messages: persist, call AI, and reply.
+ */
 export class HandleIncomingMessageUseCase {
   constructor(
     private readonly conversationRepo: ConversationRepository,
@@ -28,7 +31,6 @@ export class HandleIncomingMessageUseCase {
   async execute(dto: HandleIncomingMessageDto): Promise<HandleIncomingMessageResult> {
     const phoneNumber = PhoneNumber.create(dto.fromPhoneNumber);
 
-    // 1. Resolver o crear el usuario
     let user = await this.userRepo.findByPhoneNumber(phoneNumber);
     if (!user) {
       user = User.create({
@@ -40,7 +42,6 @@ export class HandleIncomingMessageUseCase {
       user = await this.userRepo.save(user);
     }
 
-    // 2. Resolver o crear la conversación activa
     let conversation = await this.conversationRepo.findActiveByPhoneNumber(phoneNumber.value);
     if (!conversation) {
       conversation = Conversation.create({
@@ -55,7 +56,6 @@ export class HandleIncomingMessageUseCase {
       });
     }
 
-    // 3. Persistir el mensaje del usuario
     const userMessage = Message.create({
       id: MessageId.generate(),
       conversationId: conversation.id,
@@ -69,7 +69,6 @@ export class HandleIncomingMessageUseCase {
     conversation = conversation.addMessage(userMessage);
     await this.conversationRepo.save(conversation);
 
-    // 4. Construir el contexto para la IA con ventana deslizante
     const recentMessages = conversation.getLastNMessages(CONTEXT_WINDOW_SIZE);
     const chatHistory = recentMessages.map((m) => ({
       role: m.role as 'user' | 'assistant',
@@ -80,7 +79,6 @@ export class HandleIncomingMessageUseCase {
       [{ role: 'system', content: SYSTEM_PROMPT }, ...chatHistory],
     );
 
-    // 5. Persistir la respuesta del asistente
     const assistantMessage = Message.create({
       id: MessageId.generate(),
       conversationId: conversation.id,
@@ -97,7 +95,6 @@ export class HandleIncomingMessageUseCase {
     conversation = conversation.addMessage(assistantMessage);
     await this.conversationRepo.save(conversation);
 
-    // 6. Enviar la respuesta al usuario vía WhatsApp
     await this.messagingProvider.sendTextMessage({
       to: phoneNumber.value,
       body: aiResult.content,

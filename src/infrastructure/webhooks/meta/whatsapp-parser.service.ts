@@ -6,12 +6,10 @@ import type {
   ParsedWhatsAppInboundMessage,
 } from './meta-whatsapp.types.js';
 
-/** Extrae datos limpios del JSON anidado del webhook de Meta WhatsApp Cloud API */
+/**
+ * Parses nested Meta WhatsApp Cloud API webhook payloads into normalized messages.
+ */
 export class WhatsAppParserService {
-  /**
-   * Convierte el payload crudo de Meta en mensajes de texto entrantes normalizados.
-   * Ignora eventos de estado, mensajes no textuales y payloads de otros objetos.
-   */
   parseInboundMessages(payload: MetaWebhookPayload): ParsedWhatsAppInboundMessage[] {
     if (payload.object !== 'whatsapp_business_account') {
       return [];
@@ -28,10 +26,6 @@ export class WhatsAppParserService {
     return messages;
   }
 
-  /**
-   * Extrae un único mensaje usando la ruta documentada por Meta:
-   * `entry[0].changes[0].value.messages[0]` con contacto y texto asociados.
-   */
   parseFirstInboundMessage(payload: MetaWebhookPayload): ParsedWhatsAppInboundMessage | null {
     const entry = payload.entry[0];
     const change = entry?.changes[0];

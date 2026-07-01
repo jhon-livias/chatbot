@@ -1,32 +1,32 @@
-import type { TipoPrograma } from '../enums/tipo-programa.enum.js';
-import { Modalidad } from '../enums/modalidad.enum.js';
+import type { ProgramType } from '../enums/program-type.enum.js';
+import { Modality } from '../enums/modality.enum.js';
 import { DomainException } from '../exceptions/domain.exception.js';
 
-export type ProgramaStatus = 'active' | 'inactive';
+export type ProgramStatus = 'active' | 'inactive';
 
-export interface ProgramaModalityEntry {
+export interface ProgramModalityEntry {
   careerType: string;
-  modalities: Modalidad[];
+  modalities: Modality[];
 }
 
-export interface ProgramaFaqEntry {
+export interface ProgramFaqEntry {
   question: string;
   answer: string;
 }
 
-export interface ProgramaCostEntry {
+export interface ProgramCostEntry {
   currency: string;
   thesisFolderFee: number;
   bachelorFolderFee: number;
 }
 
-export interface ProgramaProps {
+export interface ProgramProps {
   id: string;
   name: string;
-  types: [TipoPrograma, ...TipoPrograma[]];
+  types: [ProgramType, ...ProgramType[]];
   facultyId: string;
   duration: string;
-  modalities: [ProgramaModalityEntry, ...ProgramaModalityEntry[]];
+  modalities: [ProgramModalityEntry, ...ProgramModalityEntry[]];
   academicDegree: string;
   professionalTitle: string;
   brochureUrl: string;
@@ -34,7 +34,7 @@ export interface ProgramaProps {
   sellingPoints: string[];
   tags: string[];
   questionsAnswered: string[];
-  faq: ProgramaFaqEntry[];
+  faq: ProgramFaqEntry[];
   graduateProfile: string;
   jobOpportunities: string[];
   objective: string;
@@ -42,12 +42,11 @@ export interface ProgramaProps {
   gallery: string[];
   promoVideoUrl: string;
   admissionRequirements: string[];
-  /** Número de WhatsApp del coordinador del programa (E.164) */
   whatsappContact: string;
   applicationFormUrl: string;
   thesisFolderFee: number;
   slug: string;
-  status: ProgramaStatus;
+  status: ProgramStatus;
   directorId: string;
   teacherIds: string[];
   totalCredits: number;
@@ -55,20 +54,22 @@ export interface ProgramaProps {
   searchText: string;
   scheduleDescription: string;
   bachelorFolderFee: number;
-  costs: ProgramaCostEntry[];
-  /** Contexto extendido usado por el modelo de IA (RAG) */
+  costs: ProgramCostEntry[];
   iaInformation: string;
   createdAt: Date;
   updatedAt: Date;
 }
 
-export class Programa {
+/**
+ * Domain entity representing an academic program offered by the institution.
+ */
+export class Program {
   readonly id: string;
   readonly name: string;
-  readonly types: ReadonlyArray<TipoPrograma>;
+  readonly types: ReadonlyArray<ProgramType>;
   readonly facultyId: string;
   readonly duration: string;
-  readonly modalities: ReadonlyArray<ProgramaModalityEntry>;
+  readonly modalities: ReadonlyArray<ProgramModalityEntry>;
   readonly academicDegree: string;
   readonly professionalTitle: string;
   readonly brochureUrl: string;
@@ -76,7 +77,7 @@ export class Programa {
   readonly sellingPoints: ReadonlyArray<string>;
   readonly tags: ReadonlyArray<string>;
   readonly questionsAnswered: ReadonlyArray<string>;
-  readonly faq: ReadonlyArray<ProgramaFaqEntry>;
+  readonly faq: ReadonlyArray<ProgramFaqEntry>;
   readonly graduateProfile: string;
   readonly jobOpportunities: ReadonlyArray<string>;
   readonly objective: string;
@@ -88,7 +89,7 @@ export class Programa {
   readonly applicationFormUrl: string;
   readonly thesisFolderFee: number;
   readonly slug: string;
-  readonly status: ProgramaStatus;
+  readonly status: ProgramStatus;
   readonly directorId: string;
   readonly teacherIds: ReadonlyArray<string>;
   readonly totalCredits: number;
@@ -96,12 +97,12 @@ export class Programa {
   readonly searchText: string;
   readonly scheduleDescription: string;
   readonly bachelorFolderFee: number;
-  readonly costs: ReadonlyArray<ProgramaCostEntry>;
+  readonly costs: ReadonlyArray<ProgramCostEntry>;
   readonly iaInformation: string;
   readonly createdAt: Date;
   readonly updatedAt: Date;
 
-  private constructor(props: ProgramaProps) {
+  private constructor(props: ProgramProps) {
     this.id = props.id;
     this.name = props.name;
     this.types = props.types;
@@ -141,64 +142,64 @@ export class Programa {
     this.updatedAt = props.updatedAt;
   }
 
-  static create(props: ProgramaProps): Programa {
+  static create(props: ProgramProps): Program {
     if (!props.name.trim()) {
-      throw new DomainException('El nombre del programa no puede estar vacío');
+      throw new DomainException('Program name cannot be empty');
     }
     if (!props.types.length) {
-      throw new DomainException('El programa debe tener al menos un tipo');
+      throw new DomainException('Program must have at least one type');
     }
     if (!props.modalities.length) {
-      throw new DomainException('El programa debe tener al menos una modalidad');
+      throw new DomainException('Program must have at least one modality');
     }
     if (!props.iaInformation.trim()) {
-      throw new DomainException('El campo iaInformation es requerido para el contexto de IA');
+      throw new DomainException('iaInformation is required for AI context');
     }
-    return new Programa(props);
+    return new Program(props);
   }
 
   isActive(): boolean {
     return this.status === 'active';
   }
 
-  hasType(tipo: TipoPrograma): boolean {
-    return (this.types as TipoPrograma[]).includes(tipo);
+  hasType(type: ProgramType): boolean {
+    return (this.types as ProgramType[]).includes(type);
   }
 
   isVirtual(): boolean {
-    return this.getFlatModalities().includes(Modalidad.VIRTUAL);
+    return this.getFlatModalities().includes(Modality.VIRTUAL);
   }
 
-  hasModalidad(modalidad: Modalidad): boolean {
-    return this.getFlatModalities().includes(modalidad);
+  hasModality(modality: Modality): boolean {
+    return this.getFlatModalities().includes(modality);
   }
 
-  getFlatModalities(): Modalidad[] {
-    const unique = new Set<Modalidad>();
+  getFlatModalities(): Modality[] {
+    const unique = new Set<Modality>();
     for (const entry of this.modalities) {
-      for (const modalidad of entry.modalities) {
-        unique.add(modalidad);
+      for (const modality of entry.modalities) {
+        unique.add(modality);
       }
     }
     return [...unique];
   }
 
-  update(partial: Partial<Omit<ProgramaProps, 'id' | 'createdAt'>>): Programa {
-    return Programa.create({
+  update(partial: Partial<Omit<ProgramProps, 'id' | 'createdAt'>>): Program {
+    return Program.create({
       ...this.toProps(),
       ...partial,
       updatedAt: new Date(),
-    } as ProgramaProps);
+    } as ProgramProps);
   }
 
-  toProps(): ProgramaProps {
+  toProps(): ProgramProps {
     return {
       id: this.id,
       name: this.name,
-      types: this.types as [TipoPrograma, ...TipoPrograma[]],
+      types: this.types as [ProgramType, ...ProgramType[]],
       facultyId: this.facultyId,
       duration: this.duration,
-      modalities: this.modalities as [ProgramaModalityEntry, ...ProgramaModalityEntry[]],
+      modalities: this.modalities as [ProgramModalityEntry, ...ProgramModalityEntry[]],
       academicDegree: this.academicDegree,
       professionalTitle: this.professionalTitle,
       brochureUrl: this.brochureUrl,

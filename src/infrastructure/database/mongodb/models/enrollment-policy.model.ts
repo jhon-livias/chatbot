@@ -20,7 +20,6 @@ export interface PaymentOptionEntry {
 
 export interface IEnrollmentPolicyDocument {
   _id: Types.ObjectId;
-  /** Identificador de negocio (UUID) */
   id: string;
   careerId: string;
   period: string;

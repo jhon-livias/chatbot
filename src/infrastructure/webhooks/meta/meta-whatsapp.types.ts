@@ -1,6 +1,3 @@
-/** Tipos que modela el payload de entrada del Webhook de Meta WhatsApp Cloud API */
-
-/** Query params enviados por Meta en GET /webhook durante la verificación del hub */
 export interface MetaWebhookVerifyQuery {
   'hub.mode'?: string;
   'hub.verify_token'?: string;
@@ -50,13 +47,12 @@ export interface MetaMessageStatus {
   recipient_id: string;
 }
 
-/** Mensaje entrante normalizado tras parsear el payload anidado de Meta */
+/**
+ * Normalized inbound WhatsApp message after parsing Meta webhook payload.
+ */
 export interface ParsedWhatsAppInboundMessage {
-  /** WhatsApp ID del usuario (wa_id / message.from) */
   waId: string;
-  /** Nombre público del perfil de WhatsApp, si Meta lo incluye en contacts */
   profileName?: string;
-  /** Cuerpo del mensaje de texto: messages[n].text.body */
   text: string;
   externalMessageId: string;
   timestampMs: number;

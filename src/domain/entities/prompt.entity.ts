@@ -1,9 +1,5 @@
 import { DomainException } from '../exceptions/domain.exception.js';
 
-/**
- * Expresión regular que detecta al menos una expresión Handlebars en el template.
- * Ejemplos válidos: {{variable}}, {{{variable}}}, {{#if x}}...{{/if}}, {{> partial}}
- */
 const HBS_EXPRESSION_REGEX = /\{\{.+?\}\}/;
 
 export interface PromptVariableEntry {
@@ -19,10 +15,6 @@ export interface PromptProps {
   active: boolean;
   funnelId: string;
   intentionId: string;
-  /**
-   * Plantilla Handlebars del prompt.
-   * Ejemplo: "Eres un asesor de {{facultad}}. El programa {{nombre}} dura {{duracion}}."
-   */
   template: string;
   variables: PromptVariableEntry[];
   userId: string;
@@ -30,6 +22,9 @@ export interface PromptProps {
   updatedAt: Date;
 }
 
+/**
+ * Domain entity representing a Handlebars prompt template linked to a funnel intention.
+ */
 export class Prompt {
   readonly id: string;
   readonly title: string;
@@ -57,27 +52,26 @@ export class Prompt {
 
   static create(props: PromptProps): Prompt {
     if (!props.template.trim()) {
-      throw new DomainException('El template del prompt no puede estar vacío');
+      throw new DomainException('Prompt template cannot be empty');
     }
     if (!props.intentionId.trim()) {
-      throw new DomainException('El prompt debe estar asociado a una intención');
+      throw new DomainException('Prompt must be linked to a funnel intention');
     }
     if (!props.funnelId.trim()) {
-      throw new DomainException('El prompt debe estar asociado a un funnel');
+      throw new DomainException('Prompt must be linked to a funnel');
     }
     return new Prompt(props);
   }
 
-  /** Indica si el template incluye al menos una expresión Handlebars */
   usesHandlebars(): boolean {
     return HBS_EXPRESSION_REGEX.test(this.template);
   }
 
-  activar(): Prompt {
+  activate(): Prompt {
     return Prompt.create({ ...this.toProps(), active: true, updatedAt: new Date() });
   }
 
-  desactivar(): Prompt {
+  deactivate(): Prompt {
     return Prompt.create({ ...this.toProps(), active: false, updatedAt: new Date() });
   }
 

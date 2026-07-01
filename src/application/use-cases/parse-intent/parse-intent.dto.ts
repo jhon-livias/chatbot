@@ -1,54 +1,24 @@
-import type { IntencionCodigo } from '../../../domain/enums/intencion-codigo.enum.js';
-
-// ── Input ─────────────────────────────────────────────────────────────────
+import type { IntentionCode } from '../../../domain/enums/intention-code.enum.js';
 
 export interface ParseIntentDto {
-  /**
-   * String crudo devuelto por DeepSeek.
-   * Puede contener texto extra antes/después del JSON:
-   *   "Sure! Here's the result: { ... } Let me know..."
-   */
   rawAiResponse: string;
 }
 
-// ── Estructura esperada del JSON generado por el LLM ─────────────────────
-
 export interface IntentMetaData {
-  /**
-   * Tipo de filtro que el usuario quiere aplicar para explorar programas.
-   * Ejemplos: "tipo", "modalidad", "facultad", "nombre"
-   * `null` cuando la intención no requiere filtrar.
-   */
   filterType: string | null;
-
-  /**
-   * Valores concretos del filtro como array.
-   * Ej. ["PREGRADO"], ["VIRTUAL", "ONSITE"], []
-   * Array vacío cuando no aplica ningún filtro.
-   */
   filterValue: string[];
 }
 
-// ── Output — Value Object inmutable ──────────────────────────────────────
-
+/**
+ * Immutable value object representing a parsed user intent from the LLM.
+ */
 export class ParsedIntent {
-  /** Intención identificada — uno de los IntencionCodigo del sistema */
-  readonly intent: IntencionCodigo;
-
-  /**
-   * Slug o ID del programa de interés del usuario.
-   * `null` si el usuario no mencionó un programa específico.
-   */
+  readonly intent: IntentionCode;
   readonly careerId: string | null;
-
-  /**
-   * Metadatos auxiliares para filtrar o contextualizar la respuesta.
-   * Puede ser `undefined` si el LLM no incluyó el campo.
-   */
   readonly metaData: Readonly<IntentMetaData> | undefined;
 
   constructor(
-    intent: IntencionCodigo,
+    intent: IntentionCode,
     careerId: string | null,
     metaData: IntentMetaData | undefined,
   ) {
@@ -58,12 +28,10 @@ export class ParsedIntent {
     Object.freeze(this);
   }
 
-  /** True si la intención requiere buscar información de un programa específico */
   requiresProgram(): boolean {
     return this.careerId !== null;
   }
 
-  /** True si se debe aplicar algún tipo de filtro sobre los programas */
   hasFilter(): boolean {
     return (
       this.metaData !== undefined &&
@@ -81,10 +49,7 @@ export class ParsedIntent {
   }
 }
 
-// ── Result ────────────────────────────────────────────────────────────────
-
 export interface ParseIntentResult {
   parsedIntent: ParsedIntent;
-  /** Indica si el JSON fue extraído con limpieza (había texto extra alrededor) */
   wasExtractedFromNoise: boolean;
 }

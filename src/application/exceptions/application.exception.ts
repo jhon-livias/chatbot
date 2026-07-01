@@ -1,7 +1,7 @@
 /**
- * Excepción base de la capa de Aplicación.
- * A diferencia de DomainException (reglas de negocio), ApplicationException
- * cubre fallos de orquestación: parsing, validación de datos externos, etc.
+ * Base exception for the Application layer.
+ * Unlike DomainException (business rules), ApplicationException covers
+ * orchestration failures: parsing, external data validation, etc.
  */
 export class ApplicationException extends Error {
   readonly code: string;

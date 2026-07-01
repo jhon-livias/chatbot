@@ -33,7 +33,7 @@ export class PromptMongoRepository implements PromptRepository {
     return (docs as LeanPrompt[]).map((d) => this.toDomain(d));
   }
 
-  async findActivos(): Promise<Prompt[]> {
+  async findActive(): Promise<Prompt[]> {
     const docs = await PromptModel.find({ active: true }).lean();
     return (docs as LeanPrompt[]).map((d) => this.toDomain(d));
   }

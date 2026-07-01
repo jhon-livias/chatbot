@@ -1,15 +1,13 @@
 import { DomainException } from '../exceptions/domain.exception.js';
 
-/** Tipos de intención conocidos en la colección funnel_intentions de producción */
 export enum FunnelIntentionType {
   IDENTIFY_NEED = 'IDENTIFY_NEED',
 }
 
-export interface IntencionProps {
+export interface FunnelIntentionProps {
   id: string;
   userId: string;
   title: string;
-  /** Tipo estable de la intención, ej. IDENTIFY_NEED */
   type: string;
   description: string;
   active: boolean;
@@ -17,7 +15,10 @@ export interface IntencionProps {
   updatedAt: Date;
 }
 
-export class Intencion {
+/**
+ * Domain entity representing a funnel intention stored in the funnel_intentions collection.
+ */
+export class FunnelIntention {
   readonly id: string;
   readonly userId: string;
   readonly title: string;
@@ -27,7 +28,7 @@ export class Intencion {
   readonly createdAt: Date;
   readonly updatedAt: Date;
 
-  private constructor(props: IntencionProps) {
+  private constructor(props: FunnelIntentionProps) {
     this.id = props.id;
     this.userId = props.userId;
     this.title = props.title;
@@ -38,28 +39,28 @@ export class Intencion {
     this.updatedAt = props.updatedAt;
   }
 
-  static create(props: IntencionProps): Intencion {
+  static create(props: FunnelIntentionProps): FunnelIntention {
     if (!props.title.trim()) {
-      throw new DomainException('El título de la intención no puede estar vacío');
+      throw new DomainException('Funnel intention title cannot be empty');
     }
     if (!props.type.trim()) {
-      throw new DomainException('El type de la intención no puede estar vacío');
+      throw new DomainException('Funnel intention type cannot be empty');
     }
     if (!props.description.trim()) {
-      throw new DomainException('La descripción de la intención no puede estar vacía');
+      throw new DomainException('Funnel intention description cannot be empty');
     }
-    return new Intencion(props);
+    return new FunnelIntention(props);
   }
 
-  activar(): Intencion {
-    return Intencion.create({ ...this.toProps(), active: true, updatedAt: new Date() });
+  activate(): FunnelIntention {
+    return FunnelIntention.create({ ...this.toProps(), active: true, updatedAt: new Date() });
   }
 
-  desactivar(): Intencion {
-    return Intencion.create({ ...this.toProps(), active: false, updatedAt: new Date() });
+  deactivate(): FunnelIntention {
+    return FunnelIntention.create({ ...this.toProps(), active: false, updatedAt: new Date() });
   }
 
-  toProps(): IntencionProps {
+  toProps(): FunnelIntentionProps {
     return {
       id: this.id,
       userId: this.userId,

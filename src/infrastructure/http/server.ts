@@ -35,12 +35,12 @@ export function createServer(webhookRouter: Router, options: ServerOptions): Exp
   app.use('/api', webhookRouter);
 
   app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
-    logger.error('[HTTP] Error no manejado', { error: err.message, stack: err.stack });
+    logger.error('[HTTP] Unhandled error', { error: err.message, stack: err.stack });
     res.status(500).json({ error: 'Internal Server Error' });
   });
 
   app.listen(options.port, () => {
-    logger.info(`[HTTP] Servidor escuchando en puerto ${options.port}`);
+    logger.info(`[HTTP] Server listening on port ${options.port}`);
   });
 
   return app;

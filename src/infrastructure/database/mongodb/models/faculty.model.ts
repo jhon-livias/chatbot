@@ -2,7 +2,6 @@ import { Schema, model, type HydratedDocument, type Types } from 'mongoose';
 
 export interface IFacultyDocument {
   _id: Types.ObjectId;
-  /** Identificador de negocio (UUID) */
   id: string;
   name: string;
   description: string;

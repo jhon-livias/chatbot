@@ -1,14 +1,11 @@
 import { Schema, model, type HydratedDocument, type Types } from 'mongoose';
 
 /**
- * Índice de embeddings vectoriales generados desde context_source_data.
- * Usado para búsqueda semántica (cosine similarity / kNN).
+ * Vector embedding index generated from context_source_data for semantic search.
  */
 export interface IVectorEmbeddingDocument {
   _id: Types.ObjectId;
-  /** UUID del programa de origen (referencia a context_source_data.original_id) */
   original_id: string;
-  /** Vector de embedding (dimensión variable según modelo) */
   embedding: number[];
   program_name: string;
   embedding_updated_at: Date;

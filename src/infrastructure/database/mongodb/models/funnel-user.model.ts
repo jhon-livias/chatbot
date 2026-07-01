@@ -2,9 +2,7 @@ import { Schema, model, type HydratedDocument, type Types } from 'mongoose';
 
 export interface IFunnelUserDocument {
   _id: Types.ObjectId;
-  /** Identificador de negocio (UUID) */
   id: string;
-  /** ID del usuario en la plataforma de mensajería (ej. número WhatsApp) */
   senderId: string;
   name?: string;
   platform: string;

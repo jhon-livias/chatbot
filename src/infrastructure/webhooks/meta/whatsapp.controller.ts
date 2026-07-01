@@ -8,6 +8,9 @@ import type {
 import type { WhatsAppParserService } from './whatsapp-parser.service.js';
 import { logger } from '../../shared/logger.js';
 
+/**
+ * HTTP controller for Meta WhatsApp webhook verification and inbound messages.
+ */
 export class WhatsAppController {
   constructor(
     private readonly parser: WhatsAppParserService,
@@ -15,7 +18,6 @@ export class WhatsAppController {
     private readonly verifyToken: string,
   ) {}
 
-  /** GET /api/webhook/whatsapp — verificación del hub.challenge de Meta */
   verify(req: Request, res: Response): void {
     const query = req.query as MetaWebhookVerifyQuery;
     const mode = query['hub.mode'];
@@ -23,25 +25,23 @@ export class WhatsAppController {
     const challenge = query['hub.challenge'];
 
     if (mode === 'subscribe' && token === this.verifyToken) {
-      logger.info('[WhatsApp] Webhook verificado exitosamente');
+      logger.info('[WhatsApp] Webhook verified successfully');
       res.status(200).send(challenge);
       return;
     }
 
-    logger.warn('[WhatsApp] Verificación del webhook fallida', { mode, token });
+    logger.warn('[WhatsApp] Webhook verification failed', { mode, token });
     res.sendStatus(403);
   }
 
-  /** POST /api/webhook/whatsapp — recepción de mensajes entrantes */
   receive(req: Request, res: Response): void {
-    // Meta requiere 200 OK inmediato para evitar reintentos por timeout
     res.sendStatus(200);
 
     const payload = req.body as MetaWebhookPayload;
     const inboundMessages = this.parser.parseInboundMessages(payload);
 
     if (!inboundMessages.length) {
-      logger.debug('[WhatsApp] Webhook recibido sin mensajes de texto procesables');
+      logger.debug('[WhatsApp] Webhook received with no processable text messages');
       return;
     }
 
@@ -59,13 +59,13 @@ export class WhatsAppController {
         timestamp: message.timestampMs,
       });
 
-      logger.info('[WhatsApp] Mensaje procesado', {
+      logger.info('[WhatsApp] Message processed', {
         waId: message.waId,
         profileName: message.profileName,
         messageId: message.externalMessageId,
       });
     } catch (err) {
-      logger.error('[WhatsApp] Error procesando mensaje entrante', {
+      logger.error('[WhatsApp] Error processing inbound message', {
         waId: message.waId,
         profileName: message.profileName,
         messageId: message.externalMessageId,

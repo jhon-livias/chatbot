@@ -3,31 +3,33 @@ import { DomainException } from '../exceptions/domain.exception.js';
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const E164_REGEX = /^\+[1-9]\d{7,14}$/;
 
-export type AgenteStatus = 'Active' | 'Inactive';
+export type AgentStatus = 'Active' | 'Inactive';
 
-export interface AgenteProps {
+export interface AgentProps {
   id: string;
   name: string;
   email: string;
-  /** Número en formato E.164 para notificaciones de handoff vía WhatsApp */
   whatsapp: string;
-  status: AgenteStatus;
+  status: AgentStatus;
   userId: string;
   createdAt: Date;
   updatedAt: Date;
 }
 
-export class Agente {
+/**
+ * Domain entity representing a human agent who receives handoff notifications.
+ */
+export class Agent {
   readonly id: string;
   readonly name: string;
   readonly email: string;
   readonly whatsapp: string;
-  readonly status: AgenteStatus;
+  readonly status: AgentStatus;
   readonly userId: string;
   readonly createdAt: Date;
   readonly updatedAt: Date;
 
-  private constructor(props: AgenteProps) {
+  private constructor(props: AgentProps) {
     this.id = props.id;
     this.name = props.name;
     this.email = props.email;
@@ -38,34 +40,34 @@ export class Agente {
     this.updatedAt = props.updatedAt;
   }
 
-  get activo(): boolean {
+  get isActive(): boolean {
     return this.status === 'Active';
   }
 
-  static create(props: AgenteProps): Agente {
+  static create(props: AgentProps): Agent {
     if (!props.name.trim()) {
-      throw new DomainException('El nombre del agente no puede estar vacío');
+      throw new DomainException('Agent name cannot be empty');
     }
     if (!EMAIL_REGEX.test(props.email)) {
-      throw new DomainException(`Email inválido: "${props.email}"`);
+      throw new DomainException(`Invalid email: "${props.email}"`);
     }
     if (!E164_REGEX.test(props.whatsapp)) {
       throw new DomainException(
-        `WhatsApp del agente inválido: "${props.whatsapp}". Debe estar en formato E.164`,
+        `Invalid agent WhatsApp number: "${props.whatsapp}". Must be in E.164 format`,
       );
     }
-    return new Agente(props);
+    return new Agent(props);
   }
 
-  desactivar(): Agente {
-    return Agente.create({ ...this.toProps(), status: 'Inactive', updatedAt: new Date() });
+  deactivate(): Agent {
+    return Agent.create({ ...this.toProps(), status: 'Inactive', updatedAt: new Date() });
   }
 
-  activar(): Agente {
-    return Agente.create({ ...this.toProps(), status: 'Active', updatedAt: new Date() });
+  activate(): Agent {
+    return Agent.create({ ...this.toProps(), status: 'Active', updatedAt: new Date() });
   }
 
-  toProps(): AgenteProps {
+  toProps(): AgentProps {
     return {
       id: this.id,
       name: this.name,

@@ -1,8 +1,7 @@
 import { Schema, model, type HydratedDocument, type Types } from 'mongoose';
 
 /**
- * Tareas programadas para el pipeline de SQS (re-engagement de usuarios,
- * follow-ups automáticos de WhatsApp, etc.).
+ * Scheduled tasks for the SQS pipeline (user re-engagement, WhatsApp follow-ups, etc.).
  */
 export interface ISqsScheduledTaskDocument {
   _id: Types.ObjectId;

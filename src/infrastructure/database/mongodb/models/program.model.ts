@@ -1,25 +1,23 @@
 import { Schema, model, type HydratedDocument, type Types } from 'mongoose';
-import { TipoPrograma } from '../../../../domain/enums/tipo-programa.enum.js';
-import { Modalidad } from '../../../../domain/enums/modalidad.enum.js';
+import { ProgramType } from '../../../../domain/enums/program-type.enum.js';
+import { Modality } from '../../../../domain/enums/modality.enum.js';
 import type {
-  ProgramaCostEntry,
-  ProgramaFaqEntry,
-  ProgramaModalityEntry,
-  ProgramaStatus,
-} from '../../../../domain/entities/programa.entity.js';
+  ProgramCostEntry,
+  ProgramFaqEntry,
+  ProgramModalityEntry,
+  ProgramStatus,
+} from '../../../../domain/entities/program.entity.js';
 
-export type { ProgramaCostEntry, ProgramaFaqEntry, ProgramaModalityEntry, ProgramaStatus };
+export type { ProgramCostEntry, ProgramFaqEntry, ProgramModalityEntry, ProgramStatus };
 
-// ── Raw document interface (forma exacta del documento en MongoDB) ───────────
-export interface IProgramaDocument {
+export interface IProgramDocument {
   _id: Types.ObjectId;
-  /** Identificador de negocio (UUID) */
   id: string;
   name: string;
-  types: TipoPrograma[];
+  types: ProgramType[];
   facultyId: string;
   duration: string;
-  modalities: ProgramaModalityEntry[];
+  modalities: ProgramModalityEntry[];
   academicDegree: string;
   professionalTitle: string;
   brochureUrl: string;
@@ -27,7 +25,7 @@ export interface IProgramaDocument {
   sellingPoints: string[];
   tags: string[];
   questionsAnswered: string[];
-  faq: ProgramaFaqEntry[];
+  faq: ProgramFaqEntry[];
   graduateProfile: string;
   jobOpportunities: string[];
   objective: string;
@@ -35,12 +33,11 @@ export interface IProgramaDocument {
   gallery: string[];
   promoVideoUrl: string;
   admissionRequirements: string[];
-  /** Número WhatsApp del coordinador en formato E.164 */
   whatsappContact: string;
   applicationFormUrl: string;
   thesisFolderFee: number;
   slug: string;
-  status: ProgramaStatus;
+  status: ProgramStatus;
   directorId: string;
   teacherIds: string[];
   totalCredits: number;
@@ -48,33 +45,31 @@ export interface IProgramaDocument {
   searchText: string;
   scheduleDescription: string;
   bachelorFolderFee: number;
-  costs: ProgramaCostEntry[];
-  /** Contexto extendido usado por el LLM para responder consultas (RAG) */
+  costs: ProgramCostEntry[];
   iaInformation: string;
   createdAt: Date;
   updatedAt: Date;
 }
 
-export type ProgramaDocument = HydratedDocument<IProgramaDocument>;
+export type ProgramDocument = HydratedDocument<IProgramDocument>;
 
-// ── Sub-schemas ────────────────────────────────────────────────────────────
-const programModalityEntrySchema = new Schema<ProgramaModalityEntry>(
+const programModalityEntrySchema = new Schema<ProgramModalityEntry>(
   {
     careerType: { type: String, required: true, trim: true },
     modalities: {
       type: [String],
-      enum: Object.values(Modalidad),
+      enum: Object.values(Modality),
       required: true,
       validate: {
         validator: (v: string[]) => v.length > 0,
-        message: 'Cada tipo de carrera debe tener al menos una modalidad',
+        message: 'Each career type must have at least one modality',
       },
     },
   },
   { _id: false },
 );
 
-const programFaqEntrySchema = new Schema<ProgramaFaqEntry>(
+const programFaqEntrySchema = new Schema<ProgramFaqEntry>(
   {
     question: { type: String, required: true, trim: true },
     answer: { type: String, required: true, trim: true },
@@ -82,7 +77,7 @@ const programFaqEntrySchema = new Schema<ProgramaFaqEntry>(
   { _id: false },
 );
 
-const programCostEntrySchema = new Schema<ProgramaCostEntry>(
+const programCostEntrySchema = new Schema<ProgramCostEntry>(
   {
     currency: { type: String, required: true, trim: true },
     thesisFolderFee: { type: Number, required: true },
@@ -91,47 +86,46 @@ const programCostEntrySchema = new Schema<ProgramaCostEntry>(
   { _id: false },
 );
 
-// ── Schema ─────────────────────────────────────────────────────────────────
-const programaSchema = new Schema<IProgramaDocument>(
+const programSchema = new Schema<IProgramDocument>(
   {
     id: {
       type: String,
-      required: [true, 'El id del programa es requerido'],
+      required: [true, 'Program id is required'],
       unique: true,
       index: true,
     },
     name: {
       type: String,
-      required: [true, 'El nombre del programa es requerido'],
+      required: [true, 'Program name is required'],
       trim: true,
       index: true,
     },
     types: {
       type: [String],
-      enum: Object.values(TipoPrograma),
-      required: [true, 'Se requiere al menos un tipo de programa'],
+      enum: Object.values(ProgramType),
+      required: [true, 'At least one program type is required'],
       validate: {
         validator: (v: string[]) => v.length > 0,
-        message: 'El programa debe tener al menos un tipo',
+        message: 'Program must have at least one type',
       },
       index: true,
     },
     facultyId: {
       type: String,
-      required: [true, 'El facultyId es requerido'],
+      required: [true, 'facultyId is required'],
       index: true,
     },
     duration: {
       type: String,
-      required: [true, 'La duración es requerida'],
+      required: [true, 'Duration is required'],
       trim: true,
     },
     modalities: {
       type: [programModalityEntrySchema],
-      required: [true, 'Se requiere al menos una modalidad'],
+      required: [true, 'At least one modality is required'],
       validate: {
-        validator: (v: ProgramaModalityEntry[]) => v.length > 0,
-        message: 'El programa debe tener al menos una modalidad',
+        validator: (v: ProgramModalityEntry[]) => v.length > 0,
+        message: 'Program must have at least one modality',
       },
     },
     academicDegree: { type: String, required: true, trim: true },
@@ -151,18 +145,18 @@ const programaSchema = new Schema<IProgramaDocument>(
     admissionRequirements: { type: [String], default: [] },
     whatsappContact: {
       type: String,
-      required: [true, 'El número de WhatsApp es requerido'],
+      required: [true, 'WhatsApp number is required'],
       trim: true,
       validate: {
         validator: (v: string) => v === '' || /^\+[1-9]\d{7,14}$/.test(v),
-        message: 'El número de WhatsApp debe estar en formato E.164',
+        message: 'WhatsApp number must be in E.164 format',
       },
     },
     applicationFormUrl: { type: String, trim: true, default: '' },
     thesisFolderFee: { type: Number, default: 0 },
     slug: {
       type: String,
-      required: [true, 'El slug es requerido'],
+      required: [true, 'Slug is required'],
       unique: true,
       trim: true,
       index: true,
@@ -170,7 +164,7 @@ const programaSchema = new Schema<IProgramaDocument>(
     status: {
       type: String,
       enum: ['active', 'inactive'],
-      required: [true, 'El estado es requerido'],
+      required: [true, 'Status is required'],
       index: true,
     },
     directorId: { type: String, required: true, index: true },
@@ -190,11 +184,11 @@ const programaSchema = new Schema<IProgramaDocument>(
   },
 );
 
-programaSchema.index(
+programSchema.index(
   { name: 'text', summary: 'text', iaInformation: 'text', searchText: 'text' },
   { name: 'text_search', weights: { name: 10, summary: 5, iaInformation: 3, searchText: 8 } },
 );
 
-programaSchema.index({ 'modalities.modalities': 1 });
+programSchema.index({ 'modalities.modalities': 1 });
 
-export const ProgramaModel = model<IProgramaDocument>('Program', programaSchema);
+export const ProgramModel = model<IProgramDocument>('Program', programSchema);

@@ -10,7 +10,6 @@ export interface FunnelAgentEntry {
 
 export interface IFunnelDocument {
   _id: Types.ObjectId;
-  /** Identificador de negocio (UUID) */
   id: string;
   name: string;
   description: string;

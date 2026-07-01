@@ -16,7 +16,9 @@ interface MetaSendMessageResponse {
   messages: Array<{ id: string }>;
 }
 
-/** Adaptador que implementa MessagingProviderPort usando la API de Meta (WhatsApp Cloud API) */
+/**
+ * Adapter that implements MessagingProviderPort using the Meta WhatsApp Cloud API.
+ */
 export class MetaWhatsAppAdapter implements MessagingProviderPort {
   private readonly client: AxiosInstance;
   private readonly phoneNumberId: string;
@@ -34,7 +36,7 @@ export class MetaWhatsAppAdapter implements MessagingProviderPort {
   }
 
   async sendTextMessage(message: OutboundTextMessage): Promise<OutboundMessageResult> {
-    logger.debug('[Meta] Enviando mensaje de texto', { to: message.to });
+    logger.debug('[Meta] Sending text message', { to: message.to });
 
     const response = await this.client.post<MetaSendMessageResponse>(
       `/${this.phoneNumberId}/messages`,
@@ -48,7 +50,7 @@ export class MetaWhatsAppAdapter implements MessagingProviderPort {
     );
 
     const messageId = response.data.messages[0]?.id ?? '';
-    logger.debug('[Meta] Mensaje enviado', { messageId });
+    logger.debug('[Meta] Message sent', { messageId });
 
     return { messageId, status: 'sent' };
   }

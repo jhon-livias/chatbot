@@ -12,7 +12,6 @@ export interface IPostDocument {
   slug: string;
   author: string;
   coverImageUrl: string;
-  /** Contenido en formato TipTap (JSON estructurado) */
   content: Record<string, unknown>;
   status: PostStatus;
   category: string;

@@ -5,7 +5,6 @@ export type FunnelMessageDirection = 'inbound' | 'outbound';
 
 export interface IFunnelMessageDocument {
   _id: Types.ObjectId;
-  /** Identificador de negocio (UUID) */
   id: string;
   userId: string;
   text: string;

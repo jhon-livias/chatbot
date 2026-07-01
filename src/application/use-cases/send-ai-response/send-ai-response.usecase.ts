@@ -6,6 +6,9 @@ import { MessageId } from '../../../domain/value-objects/message-id.vo.js';
 import type { SendAiResponseDto, SendAiResponseResult } from './send-ai-response.dto.js';
 import { DomainException } from '../../../domain/exceptions/domain.exception.js';
 
+/**
+ * Generates an AI response for an existing conversation and sends it via messaging.
+ */
 export class SendAiResponseUseCase {
   constructor(
     private readonly conversationRepo: ConversationRepository,
@@ -17,7 +20,7 @@ export class SendAiResponseUseCase {
     const conversation = await this.conversationRepo.findById(dto.conversationId);
     if (!conversation) {
       throw new DomainException(
-        `Conversación no encontrada: ${dto.conversationId}`,
+        `Conversation not found: ${dto.conversationId}`,
         'CONVERSATION_NOT_FOUND',
       );
     }

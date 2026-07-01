@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 
-/** Identificador único de un mensaje — wraps UUID v4 */
+/**
+ * Unique message identifier wrapping a UUID v4.
+ */
 export class MessageId {
   readonly value: string;
 
@@ -14,7 +16,7 @@ export class MessageId {
 
   static from(value: string): MessageId {
     if (!value?.trim()) {
-      throw new Error('MessageId no puede estar vacío');
+      throw new Error('MessageId cannot be empty');
     }
     return new MessageId(value.trim());
   }

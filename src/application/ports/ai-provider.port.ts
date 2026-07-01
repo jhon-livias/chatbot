@@ -18,7 +18,9 @@ export interface AiCompletionResult {
   totalTokens: number;
 }
 
-/** Puerto (interfaz) que desacopla la capa de aplicación de cualquier proveedor de IA */
+/**
+ * Port that decouples the application layer from any AI provider.
+ */
 export interface AiProviderPort {
   complete(messages: ChatMessage[], options?: AiCompletionOptions): Promise<AiCompletionResult>;
 }

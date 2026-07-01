@@ -1,12 +1,18 @@
-import { Schema, model, type HydratedDocument } from 'mongoose';
-import { IntencionCodigo } from '../../../../domain/enums/intencion-codigo.enum.js';
+import { Schema, model, type HydratedDocument, type Types } from 'mongoose';
 
-// ── Raw document interface ─────────────────────────────────────────────────
+// ── Raw document interface (forma exacta del documento en MongoDB) ───────────
 export interface IIntencionDocument {
-  /** Slug único y estable — ver IntencionCodigo */
-  codigo: IntencionCodigo;
-  titulo: string;
-  descripcion: string;
+  _id: Types.ObjectId;
+  /** Identificador de negocio (UUID) */
+  id: string;
+  userId: string;
+  title: string;
+  /** Tipo estable de la intención del funnel, ej. IDENTIFY_NEED */
+  type: string;
+  description: string;
+  active: boolean;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export type IntencionDocument = HydratedDocument<IIntencionDocument>;
@@ -14,29 +20,46 @@ export type IntencionDocument = HydratedDocument<IIntencionDocument>;
 // ── Schema ─────────────────────────────────────────────────────────────────
 const intencionSchema = new Schema<IIntencionDocument>(
   {
-    codigo: {
+    id: {
       type: String,
-      enum: Object.values(IntencionCodigo),
-      required: [true, 'El código de la intención es requerido'],
+      required: [true, 'El id de la intención es requerido'],
       unique: true,
       index: true,
     },
-    titulo: {
+    userId: {
       type: String,
-      required: [true, 'El título de la intención es requerido'],
+      required: [true, 'El userId es requerido'],
+      index: true,
+    },
+    title: {
+      type: String,
+      required: [true, 'El título es requerido'],
       trim: true,
     },
-    descripcion: {
+    type: {
       type: String,
-      required: [true, 'La descripción de la intención es requerida'],
+      required: [true, 'El type es requerido'],
       trim: true,
+      index: true,
+    },
+    description: {
+      type: String,
+      required: [true, 'La descripción es requerida'],
+      trim: true,
+    },
+    active: {
+      type: Boolean,
+      default: true,
+      index: true,
     },
   },
   {
+    timestamps: true,
     versionKey: false,
-    collection: 'intenciones',
-    // Las intenciones no necesitan timestamps — son registros estables
+    collection: 'funnel_intentions',
   },
 );
 
-export const IntencionModel = model<IIntencionDocument>('Intencion', intencionSchema);
+intencionSchema.index({ type: 1, active: 1 });
+
+export const IntencionModel = model<IIntencionDocument>('FunnelIntention', intencionSchema);

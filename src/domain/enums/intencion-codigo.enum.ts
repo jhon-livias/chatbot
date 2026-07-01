@@ -1,7 +1,7 @@
 /**
- * Identificadores estables para las 7 intenciones base del sistema.
- * Se usan como slug único en la colección `intenciones` y como referencia
- * en el código (evita hardcodear strings arbitrarios).
+ * Identificadores estables para las intenciones que el LLM devuelve al parsear
+ * el mensaje del usuario (capa de aplicación). Distintos de los `type` almacenados
+ * en la colección `funnel_intentions` (ej. IDENTIFY_NEED).
  */
 export enum IntencionCodigo {
   IDENTIFICAR_INTENCION = 'IDENTIFICAR_INTENCION',

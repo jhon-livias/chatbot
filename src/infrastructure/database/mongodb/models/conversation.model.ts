@@ -1,9 +1,11 @@
 import { Schema, model, type Document } from 'mongoose';
 
+export type ConversationStatus = 'active' | 'idle' | 'closed';
+
 export interface ConversationDocument extends Document<string> {
   userId: string;
   phoneNumber: string;
-  status: 'active' | 'idle' | 'closed';
+  status: ConversationStatus;
   systemPrompt?: string;
   createdAt: Date;
   updatedAt: Date;
@@ -16,7 +18,7 @@ const conversationSchema = new Schema<ConversationDocument>(
     phoneNumber: { type: String, required: true, index: true },
     status: {
       type: String,
-      enum: ['active', 'idle', 'closed'],
+      enum: ['active', 'idle', 'closed'] satisfies ConversationStatus[],
       default: 'active',
       index: true,
     },
@@ -25,6 +27,7 @@ const conversationSchema = new Schema<ConversationDocument>(
   {
     timestamps: true,
     versionKey: false,
+    collection: 'conversations',
   },
 );
 

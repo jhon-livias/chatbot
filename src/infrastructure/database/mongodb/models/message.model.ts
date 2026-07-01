@@ -1,11 +1,14 @@
 import { Schema, model, type Document } from 'mongoose';
 
+export type MessageRole = 'user' | 'assistant' | 'system';
+export type MessageStatus = 'received' | 'processing' | 'sent' | 'failed' | 'read';
+
 export interface MessageDocument extends Document<string> {
   conversationId: string;
   externalId?: string;
-  role: 'user' | 'assistant' | 'system';
+  role: MessageRole;
   content: string;
-  status: 'received' | 'processing' | 'sent' | 'failed' | 'read';
+  status: MessageStatus;
   timestamp: Date;
   metadata?: Record<string, unknown>;
 }
@@ -17,13 +20,13 @@ const messageSchema = new Schema<MessageDocument>(
     externalId: { type: String, sparse: true },
     role: {
       type: String,
-      enum: ['user', 'assistant', 'system'],
+      enum: ['user', 'assistant', 'system'] satisfies MessageRole[],
       required: true,
     },
     content: { type: String, required: true },
     status: {
       type: String,
-      enum: ['received', 'processing', 'sent', 'failed', 'read'],
+      enum: ['received', 'processing', 'sent', 'failed', 'read'] satisfies MessageStatus[],
       default: 'received',
     },
     timestamp: { type: Date, required: true, default: Date.now },
@@ -31,6 +34,7 @@ const messageSchema = new Schema<MessageDocument>(
   },
   {
     versionKey: false,
+    collection: 'messages',
   },
 );
 

@@ -1,12 +1,17 @@
 import { Schema, model, type HydratedDocument, type Types } from 'mongoose';
-import { FunnelEtapa } from '../../../../domain/enums/funnel-etapa.enum.js';
+import type { PromptVariableEntry } from '../../../../domain/entities/prompt.entity.js';
 
-// ── Raw document interface ─────────────────────────────────────────────────
+export type { PromptVariableEntry };
+
+// ── Raw document interface (forma exacta del documento en MongoDB) ─────────
 export interface IPromptDocument {
-  /** Etapa del funnel de conversión */
-  funnel: FunnelEtapa;
-  /** Referencia a la colección `intenciones` */
-  intencionId: Types.ObjectId;
+  _id: Types.ObjectId;
+  /** Identificador de negocio (UUID) */
+  id: string;
+  title: string;
+  active: boolean;
+  funnelId: string;
+  intentionId: string;
   /**
    * Plantilla Handlebars del prompt del sistema.
    *
@@ -18,56 +23,68 @@ export interface IPromptDocument {
    *   - Parciales:        {{> nombre_parcial}}
    *   - Helpers:          {{helper argumento}}
    */
-  contenido: string;
-  /** Descripción interna del propósito del prompt */
-  descripcion?: string;
-  /** Lista de variables Handlebars que se esperan en el contexto de renderizado */
-  variables: string[];
-  version: number;
-  activo: boolean;
+  template: string;
+  /** Definición de variables dinámicas resueltas desde otras colecciones */
+  variables: PromptVariableEntry[];
+  userId: string;
   createdAt: Date;
   updatedAt: Date;
 }
 
 export type PromptDocument = HydratedDocument<IPromptDocument>;
 
+// ── Sub-schema ─────────────────────────────────────────────────────────────
+const promptVariableEntrySchema = new Schema<PromptVariableEntry>(
+  {
+    source: { type: String, required: true, trim: true },
+    path: { type: String, required: true, trim: true },
+    collectionId: { type: String, required: true, trim: true },
+    type: { type: String, required: true, trim: true },
+  },
+  { _id: false },
+);
+
 // ── Schema ─────────────────────────────────────────────────────────────────
 const promptSchema = new Schema<IPromptDocument>(
   {
-    funnel: {
+    id: {
       type: String,
-      enum: Object.values(FunnelEtapa),
-      required: [true, 'La etapa del funnel es requerida'],
+      required: [true, 'El id del prompt es requerido'],
+      unique: true,
       index: true,
     },
-    intencionId: {
-      type: Schema.Types.ObjectId,
-      ref: 'Intencion',
-      required: [true, 'La intención asociada es requerida'],
-      index: true,
-    },
-    contenido: {
+    title: {
       type: String,
-      required: [true, 'El contenido del prompt es requerido'],
+      required: [true, 'El título es requerido'],
       trim: true,
     },
-    descripcion: {
+    active: {
+      type: Boolean,
+      default: true,
+      index: true,
+    },
+    funnelId: {
       type: String,
+      required: [true, 'El funnelId es requerido'],
+      index: true,
+    },
+    intentionId: {
+      type: String,
+      required: [true, 'El intentionId es requerido'],
+      index: true,
+    },
+    template: {
+      type: String,
+      required: [true, 'El template del prompt es requerido'],
       trim: true,
     },
     variables: {
-      type: [String],
+      type: [promptVariableEntrySchema],
       default: [],
     },
-    version: {
-      type: Number,
-      required: true,
-      default: 1,
-      min: [1, 'La versión debe ser mayor o igual a 1'],
-    },
-    activo: {
-      type: Boolean,
-      default: true,
+    userId: {
+      type: String,
+      required: [true, 'El userId es requerido'],
       index: true,
     },
   },
@@ -78,16 +95,12 @@ const promptSchema = new Schema<IPromptDocument>(
   },
 );
 
-// Garantiza que solo haya un prompt activo por funnel + intención
 promptSchema.index(
-  { funnel: 1, intencionId: 1, activo: 1 },
+  { funnelId: 1, intentionId: 1, active: 1 },
   {
     name: 'unique_active_prompt',
-    partialFilterExpression: { activo: true },
+    partialFilterExpression: { active: true },
   },
 );
-
-// Índice para historial de versiones
-promptSchema.index({ intencionId: 1, version: -1 });
 
 export const PromptModel = model<IPromptDocument>('Prompt', promptSchema);

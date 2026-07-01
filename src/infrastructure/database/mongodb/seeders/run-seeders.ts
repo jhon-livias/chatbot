@@ -17,7 +17,7 @@ async function runSeeders(): Promise<void> {
 
   const intencionRepo = new IntencionMongoRepository();
   await seedIntenciones(intencionRepo);
-  logger.info('[Seeder] ✓ 7 intenciones base sincronizadas');
+  logger.info('[Seeder] ✓ intenciones base sincronizadas');
 
   await disconnectMongoDB();
   logger.info('[Seeder] Completado.');

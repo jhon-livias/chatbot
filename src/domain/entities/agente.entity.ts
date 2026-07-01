@@ -3,45 +3,48 @@ import { DomainException } from '../exceptions/domain.exception.js';
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const E164_REGEX = /^\+[1-9]\d{7,14}$/;
 
+export type AgenteStatus = 'Active' | 'Inactive';
+
 export interface AgenteProps {
   id: string;
-  nombre_completo: string;
-  ubicacion: string;
-  descripcion: string;
+  name: string;
   email: string;
   /** Número en formato E.164 para notificaciones de handoff vía WhatsApp */
   whatsapp: string;
-  activo: boolean;
+  status: AgenteStatus;
+  userId: string;
   createdAt: Date;
   updatedAt: Date;
 }
 
 export class Agente {
   readonly id: string;
-  readonly nombre_completo: string;
-  readonly ubicacion: string;
-  readonly descripcion: string;
+  readonly name: string;
   readonly email: string;
   readonly whatsapp: string;
-  readonly activo: boolean;
+  readonly status: AgenteStatus;
+  readonly userId: string;
   readonly createdAt: Date;
   readonly updatedAt: Date;
 
   private constructor(props: AgenteProps) {
     this.id = props.id;
-    this.nombre_completo = props.nombre_completo;
-    this.ubicacion = props.ubicacion;
-    this.descripcion = props.descripcion;
+    this.name = props.name;
     this.email = props.email;
     this.whatsapp = props.whatsapp;
-    this.activo = props.activo;
+    this.status = props.status;
+    this.userId = props.userId;
     this.createdAt = props.createdAt;
     this.updatedAt = props.updatedAt;
   }
 
+  get activo(): boolean {
+    return this.status === 'Active';
+  }
+
   static create(props: AgenteProps): Agente {
-    if (!props.nombre_completo.trim()) {
-      throw new DomainException('El nombre completo del agente no puede estar vacío');
+    if (!props.name.trim()) {
+      throw new DomainException('El nombre del agente no puede estar vacío');
     }
     if (!EMAIL_REGEX.test(props.email)) {
       throw new DomainException(`Email inválido: "${props.email}"`);
@@ -55,22 +58,21 @@ export class Agente {
   }
 
   desactivar(): Agente {
-    return Agente.create({ ...this.toProps(), activo: false, updatedAt: new Date() });
+    return Agente.create({ ...this.toProps(), status: 'Inactive', updatedAt: new Date() });
   }
 
   activar(): Agente {
-    return Agente.create({ ...this.toProps(), activo: true, updatedAt: new Date() });
+    return Agente.create({ ...this.toProps(), status: 'Active', updatedAt: new Date() });
   }
 
   toProps(): AgenteProps {
     return {
       id: this.id,
-      nombre_completo: this.nombre_completo,
-      ubicacion: this.ubicacion,
-      descripcion: this.descripcion,
+      name: this.name,
       email: this.email,
       whatsapp: this.whatsapp,
-      activo: this.activo,
+      status: this.status,
+      userId: this.userId,
       createdAt: this.createdAt,
       updatedAt: this.updatedAt,
     };

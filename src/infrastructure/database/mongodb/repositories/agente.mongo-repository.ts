@@ -3,11 +3,11 @@ import { Agente } from '../../../../domain/entities/agente.entity.js';
 import { AgenteModel, type IAgenteDocument } from '../models/agente.model.js';
 import type { FlattenMaps } from 'mongoose';
 
-type LeanAgente = FlattenMaps<IAgenteDocument> & { _id: unknown };
+type LeanAgente = FlattenMaps<IAgenteDocument>;
 
 export class AgenteMongoRepository implements AgenteRepository {
   async findById(id: string): Promise<Agente | null> {
-    const doc = await AgenteModel.findById(id).lean();
+    const doc = await AgenteModel.findOne({ id }).lean();
     return doc ? this.toDomain(doc as LeanAgente) : null;
   }
 
@@ -17,30 +17,26 @@ export class AgenteMongoRepository implements AgenteRepository {
   }
 
   async findActivos(): Promise<Agente[]> {
-    const docs = await AgenteModel.find({ activo: true }).lean();
+    const docs = await AgenteModel.find({ status: 'Active' }).lean();
     return (docs as LeanAgente[]).map((d) => this.toDomain(d));
   }
 
-  async findByUbicacion(ubicacion: string): Promise<Agente[]> {
-    const docs = await AgenteModel.find({
-      ubicacion: { $regex: ubicacion, $options: 'i' },
-      activo: true,
-    }).lean();
+  async findByUserId(userId: string): Promise<Agente[]> {
+    const docs = await AgenteModel.find({ userId }).lean();
     return (docs as LeanAgente[]).map((d) => this.toDomain(d));
   }
 
   async save(agente: Agente): Promise<Agente> {
     const props = agente.toProps();
-    await AgenteModel.findByIdAndUpdate(
-      props.id,
+    await AgenteModel.findOneAndUpdate(
+      { id: props.id },
       {
-        _id: props.id,
-        nombre_completo: props.nombre_completo,
-        ubicacion: props.ubicacion,
-        descripcion: props.descripcion,
+        id: props.id,
+        name: props.name,
         email: props.email,
         whatsapp: props.whatsapp,
-        activo: props.activo,
+        status: props.status,
+        userId: props.userId,
         createdAt: props.createdAt,
         updatedAt: props.updatedAt,
       },
@@ -50,18 +46,17 @@ export class AgenteMongoRepository implements AgenteRepository {
   }
 
   async delete(id: string): Promise<void> {
-    await AgenteModel.findByIdAndDelete(id);
+    await AgenteModel.deleteOne({ id });
   }
 
   private toDomain(doc: LeanAgente): Agente {
     return Agente.create({
-      id: String(doc._id),
-      nombre_completo: doc.nombre_completo,
-      ubicacion: doc.ubicacion,
-      descripcion: doc.descripcion,
+      id: doc.id,
+      name: doc.name,
       email: doc.email,
       whatsapp: doc.whatsapp,
-      activo: doc.activo,
+      status: doc.status,
+      userId: doc.userId,
       createdAt: doc.createdAt,
       updatedAt: doc.updatedAt,
     });

@@ -10,7 +10,13 @@ export interface ServerOptions {
 export function createServer(webhookRouter: Router, options: ServerOptions): Express {
   const app = express();
 
-  app.use(express.json());
+  app.use(
+    express.json({
+      verify: (req: express.Request, _res: express.Response, buf: Buffer) => {
+        req.rawBody = buf;
+      },
+    }),
+  );
   app.use(express.urlencoded({ extended: true }));
 
   app.use((_req: Request, res: Response, next: NextFunction) => {

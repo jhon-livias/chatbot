@@ -34,10 +34,17 @@ git fetch origin "${REPO_BRANCH}"
 git reset --hard "origin/${REPO_BRANCH}"
 
 echo "==> [3/8] Environment file"
-if [[ ! -f .env ]]; then
+if [[ -n "${PRODUCTION_ENV:-}" ]]; then
+  printf '%s\n' "${PRODUCTION_ENV}" > .env
+elif [[ ! -f .env ]]; then
   cp .env.example .env
   echo "WARNING: Created .env from example. Edit ${REMOTE_DIR}/.env before production traffic."
 fi
+
+# Ensure production runtime defaults
+grep -q '^NODE_ENV=' .env || echo 'NODE_ENV=production' >> .env
+grep -q '^API_PORT=' .env || echo 'API_PORT=8080' >> .env
+sed -i 's/^NODE_ENV=.*/NODE_ENV=production/' .env
 
 echo "==> [4/8] Docker app"
 docker compose build app

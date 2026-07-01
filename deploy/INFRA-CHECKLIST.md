@@ -2,6 +2,38 @@
 
 El código, CI/CD y scripts de deploy ya están listos. El bloqueo actual es **red/AWS**, no aplicación.
 
+## 0. Si SSH desde tu Mac falla (timeout)
+
+Usa **EC2 Instance Connect** en AWS Console → instancia → **Connect** → terminal web.
+
+Pega este comando (configura `.env` si aún no existe en el servidor):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/jhon-livias/chatbot/main/deploy/remote-setup.sh | bash
+```
+
+Si necesitas subir el `.env` local en la misma sesión:
+
+```bash
+# En tu Mac (cuando SSH funcione):
+./deploy/upload-env.sh
+
+# O en Instance Connect, edita manualmente:
+nano /opt/chatbot-uprit/.env
+curl -fsSL https://raw.githubusercontent.com/jhon-livias/chatbot/main/deploy/remote-setup.sh | bash
+```
+
+## 0.1 Error Cloudflare 526 (SSL inválido)
+
+Significa que Cloudflare llega al origin pero el certificado HTTPS del servidor no es válido.
+
+Pasos:
+1. Verifica en Cloudflare DNS que `chatbot` apunte al **IP pública actual** del EC2 (AWS Console).
+2. Ejecuta `remote-setup.sh` en el servidor (instala Let's Encrypt con certbot).
+3. Cloudflare → SSL/TLS → **Full (strict)**.
+
+Durante la emisión del certificado, si certbot falla, pon temporalmente SSL en **Full** (no strict) o desactiva el proxy (nube gris) hasta que certbot termine.
+
 ## 1. AWS EC2 Security Group (obligatorio)
 
 En la consola AWS → EC2 → Security Groups → grupo de la instancia `13.217.220.99`:

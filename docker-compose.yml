@@ -1,0 +1,111 @@
+name: chatbot-uprit
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Red interna aislada. Todos los servicios se comunican por nombre de servicio.
+#  Nada del interior es accesible desde el host salvo los puertos publicados.
+# ─────────────────────────────────────────────────────────────────────────────
+networks:
+  chatbot-net:
+    driver: bridge
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Volúmenes persistentes
+# ─────────────────────────────────────────────────────────────────────────────
+volumes:
+  logs-data:
+
+services:
+
+  # ───────────────────────────────────────────────────────────────────────────
+  #  API — Backend chatbot UPRIT
+  # ───────────────────────────────────────────────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      # Construye solo el stage final de producción
+      target: production
+
+    container_name: chatbot-uprit-app
+    image: chatbot-uprit:latest
+
+    # Alta disponibilidad: reinicia el contenedor salvo que se detenga
+    # manualmente con `docker compose stop` o `docker compose down`
+    restart: unless-stopped
+
+    # Carga todas las variables del archivo .env (nunca se incluyen en la imagen)
+    env_file:
+      - .env
+
+    # Sobreescribe / garantiza el modo de producción independientemente del .env
+    environment:
+      NODE_ENV: production
+
+    ports:
+      # HOST_PORT:CONTAINER_PORT — el puerto del host se lee del .env
+      - "${PORT:-3000}:3000"
+
+    networks:
+      - chatbot-net
+
+    volumes:
+      # Persistir logs de Winston si se configura transporte de archivo
+      - logs-data:/app/logs
+
+    # PID 1 correcto: Docker usa tini (incluido en imágenes oficiales de Node)
+    # para manejar señales SIGTERM/SIGINT y procesos zombie correctamente
+    init: true
+
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+    # Límites de recursos recomendados para producción en VPS pequeño
+    # Ajusta según el tamaño de tu instancia
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 128M
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  # ───────────────────────────────────────────────────────────────────────────
+  #  MongoDB LOCAL (opcional — solo para desarrollo sin Atlas)
+  #
+  #  Para activarlo descomenta este bloque y cambia en .env:
+  #    MONGODB_URI=mongodb://mongo:27017/chatbot_uprit
+  #    MONGODB_DB_NAME=chatbot_uprit
+  # ───────────────────────────────────────────────────────────────────────────
+  # mongo:
+  #   image: mongo:7-jammy
+  #   container_name: chatbot-uprit-mongo
+  #   restart: unless-stopped
+  #   ports:
+  #     - "27017:27017"
+  #   environment:
+  #     MONGO_INITDB_DATABASE: chatbot_uprit
+  #   volumes:
+  #     - mongo-data:/data/db
+  #   networks:
+  #     - chatbot-net
+  #   healthcheck:
+  #     test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+  #     interval: 30s
+  #     timeout: 5s
+  #     retries: 3
+  #     start_period: 20s
+
+# Para MongoDB local descomenta también este volumen:
+# volumes:
+#   mongo-data:

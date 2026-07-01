@@ -1,0 +1,30 @@
+# Dependencias
+node_modules/
+
+# Compilación
+dist/
+.tsbuildinfo
+
+# Variables de entorno — nunca versionar el .env real
+.env
+.env.local
+.env.*.local
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Cobertura de tests
+coverage/
+.nyc_output/

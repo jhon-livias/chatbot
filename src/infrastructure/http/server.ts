@@ -38,7 +38,7 @@ export function createServer(webhookRouter: Router, options: ServerOptions): Exp
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
   });
 
-  app.use('/api', webhookRouter);
+  app.use(webhookRouter);
 
   app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
     logger.error('[HTTP] Unhandled error', { error: err.message, stack: err.stack });

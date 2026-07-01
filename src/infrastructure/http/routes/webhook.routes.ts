@@ -5,8 +5,8 @@ import { verifyMetaSignatureMiddleware } from '../middlewares/verify-meta-signat
 export function createWebhookRouter(controller: WhatsAppController): Router {
   const router = Router();
 
-  router.get('/webhook/whatsapp', (req, res) => controller.verify(req, res));
-  router.post('/webhook/whatsapp', verifyMetaSignatureMiddleware, (req, res) =>
+  router.get('/webhook', (req, res) => controller.verify(req, res));
+  router.post('/webhook', verifyMetaSignatureMiddleware, (req, res) =>
     controller.receive(req, res),
   );
 

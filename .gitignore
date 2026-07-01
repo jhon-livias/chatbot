@@ -28,3 +28,9 @@ Thumbs.db
 # Cobertura de tests
 coverage/
 .nyc_output/
+
+# VPS (llaves SSH locales — no versionar)
+vps/
+
+# Documentación interna
+documento_tecnico.md

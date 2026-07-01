@@ -93,6 +93,19 @@ jobs:
 
           sleep 5
           curl -fsS http://127.0.0.1:8080/health
+
+          if [[ ! -f /etc/letsencrypt/live/chatbot.uprit.edu.pe/fullchain.pem ]]; then
+            sudo certbot --nginx \
+              -d chatbot.uprit.edu.pe \
+              --non-interactive \
+              --agree-tos \
+              -m soporte@uprit.edu.pe \
+              --redirect || echo "Certbot failed — ensure DNS points to this server"
+          else
+            sudo certbot renew --quiet || true
+          fi
+          sudo systemctl reload nginx
+
           docker compose ps app
           EOF
 

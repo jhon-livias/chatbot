@@ -80,11 +80,13 @@ jobs:
           EOF
 
       - name: Verify public webhook (optional)
-        if: ${{ secrets.WEBHOOK_VERIFY_TOKEN != '' }}
         env:
-          EC2_HOST: ${{ secrets.EC2_HOST }}
           WEBHOOK_VERIFY_TOKEN: ${{ secrets.WEBHOOK_VERIFY_TOKEN }}
         run: |
+          if [[ -z "${WEBHOOK_VERIFY_TOKEN}" ]]; then
+            echo "WEBHOOK_VERIFY_TOKEN not set — skipping public verify"
+            exit 0
+          fi
           CHALLENGE="gh-actions-$(date +%s)"
           URL="https://chatbot.uprit.edu.pe/webhook?hub.mode=subscribe&hub.verify_token=${WEBHOOK_VERIFY_TOKEN}&hub.challenge=${CHALLENGE}"
           RESPONSE="$(curl -fsS --max-time 20 "$URL" || true)"
@@ -92,5 +94,5 @@ jobs:
           if [[ "$RESPONSE" == "$CHALLENGE" ]]; then
             echo "Webhook verification OK"
           else
-            echo "Webhook verification skipped or failed (check DNS/SSL/origin)"
+            echo "Webhook verification failed (check DNS/SSL/origin)"
           fi

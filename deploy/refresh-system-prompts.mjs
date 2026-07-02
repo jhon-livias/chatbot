@@ -10,7 +10,7 @@ const dbName = process.env.MONGODB_DB_NAME || 'chatbot_uprit';
 
 const BASE = `Eres el asistente virtual oficial de UPRIT. Responde de manera concisa, amable y profesional en el mismo idioma que el usuario. Usa SOLO texto plano sin markdown (sin **, *, #, ni bloques de codigo) porque el canal es WhatsApp. Si no tienes informacion suficiente para responder, indica amablemente que el equipo de admisiones puede ayudar.`;
 
-const MAX_PROMPT_CHARS = 20_000;
+const MAX_PROMPT_CHARS = 32_000;
 
 function trunc(text, max) {
   if (!text) return '';
@@ -19,20 +19,24 @@ function trunc(text, max) {
 
 function formatProgram(p) {
   const lines = [`[${p.name}]`];
-  if (p.iaInformation) lines.push(trunc(p.iaInformation, 400));
-  else if (p.summary) lines.push(trunc(p.summary, 300));
+  if (p.iaInformation) lines.push(trunc(p.iaInformation, 300));
+  else if (p.summary) lines.push(trunc(p.summary, 250));
   if (p.duration) lines.push(`Duración: ${p.duration}`);
-  if (p.scheduleDescription) lines.push(trunc(`Horarios: ${p.scheduleDescription}`, 150));
-  if ((p.admissionRequirements || []).length)
-    lines.push(`Requisitos: ${p.admissionRequirements.slice(0, 4).join(' | ')}`);
-  if (p.applicationFormUrl) lines.push(`Inscripción: ${p.applicationFormUrl}`);
-  if (p.whatsappContact) lines.push(`WhatsApp: ${p.whatsappContact}`);
-  const faqSlice = (p.faq || []).slice(0, 3);
-  if (faqSlice.length) {
-    lines.push('FAQ:');
-    for (const qa of faqSlice)
-      lines.push(`  P:${trunc(qa.question, 120)} R:${trunc(qa.answer, 200)}`);
+  if (p.scheduleDescription) lines.push(trunc(`Horarios: ${p.scheduleDescription}`, 120));
+
+  const activeCosts = (p.costs || []).filter(c => c.bachelorFolderFee > 0 || c.thesisFolderFee > 0);
+  if (activeCosts.length) {
+    const costStr = activeCosts
+      .map(c => `${c.currency}: bachiller S/${c.bachelorFolderFee}, tesis S/${c.thesisFolderFee}`)
+      .join(' | ');
+    lines.push(`Costos: ${costStr}`);
   }
+
+  if ((p.admissionRequirements || []).length)
+    lines.push(`Requisitos: ${p.admissionRequirements.slice(0, 3).join(' | ')}`);
+  if (p.brochureUrl) lines.push(`Brochure: ${p.brochureUrl}`);
+  if (p.applicationFormUrl) lines.push(`Inscripción: ${p.applicationFormUrl}`);
+  if (p.whatsappContact) lines.push(`WhatsApp admisiones: ${p.whatsappContact}`);
   return lines.join('\n');
 }
 

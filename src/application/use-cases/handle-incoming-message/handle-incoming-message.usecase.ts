@@ -1,8 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import type { ConversationRepository } from '../../../domain/repositories/conversation.repository.js';
 import type { UserRepository } from '../../../domain/repositories/user.repository.js';
+import type { ProgramRepository } from '../../../domain/repositories/program.repository.js';
 import type { AiProviderPort } from '../../ports/ai-provider.port.js';
 import type { MessagingProviderPort } from '../../ports/messaging-provider.port.js';
+import type { SystemPromptBuilderService } from '../../services/system-prompt-builder.service.js';
 import { PhoneNumber } from '../../../domain/value-objects/phone-number.vo.js';
 import { MessageId } from '../../../domain/value-objects/message-id.vo.js';
 import { User } from '../../../domain/entities/user.entity.js';
@@ -13,13 +15,16 @@ import type {
   HandleIncomingMessageResult,
 } from './handle-incoming-message.dto.js';
 import { formatWhatsAppText } from '../../../infrastructure/webhooks/meta/format-whatsapp-text.js';
+import { logger } from '../../../infrastructure/shared/logger.js';
 
 const CONTEXT_WINDOW_SIZE = 10;
-const SYSTEM_PROMPT =
-  'Eres un asistente virtual de UPRIT. Responde de manera concisa, amable y en el mismo idioma que el usuario. Usa texto plano sin markdown (sin **, *, # ni bloques de código) porque el canal es WhatsApp.';
+const FALLBACK_SYSTEM_PROMPT =
+  'Eres un asistente virtual de UPRIT. Responde de manera concisa, amable y en el mismo idioma que el usuario. Usa texto plano sin markdown (sin **, *, # ni bloques de codigo) porque el canal es WhatsApp.';
 
 /**
  * Orchestrates inbound WhatsApp messages: persist, call AI, and reply.
+ * On the first message of a conversation the system prompt is built from live DB data
+ * (programs, FAQ, iaInformation) and stored on the conversation for subsequent messages.
  */
 export class HandleIncomingMessageUseCase {
   constructor(
@@ -27,6 +32,8 @@ export class HandleIncomingMessageUseCase {
     private readonly userRepo: UserRepository,
     private readonly aiProvider: AiProviderPort,
     private readonly messagingProvider: MessagingProviderPort,
+    private readonly programRepo?: ProgramRepository,
+    private readonly promptBuilder?: SystemPromptBuilderService,
   ) {}
 
   async execute(dto: HandleIncomingMessageDto): Promise<HandleIncomingMessageResult> {
@@ -45,13 +52,14 @@ export class HandleIncomingMessageUseCase {
 
     let conversation = await this.conversationRepo.findActiveByPhoneNumber(phoneNumber.value);
     if (!conversation) {
+      const systemPrompt = await this.buildSystemPrompt();
       conversation = Conversation.create({
         id: randomUUID(),
         userId: user.id,
         phoneNumber: phoneNumber.value,
         status: 'active',
         messages: [],
-        systemPrompt: SYSTEM_PROMPT,
+        systemPrompt,
         createdAt: new Date(),
         updatedAt: new Date(),
       });
@@ -76,9 +84,12 @@ export class HandleIncomingMessageUseCase {
       content: m.content,
     }));
 
-    const aiResult = await this.aiProvider.complete(
-      [{ role: 'system', content: SYSTEM_PROMPT }, ...chatHistory],
-    );
+    const activeSystemPrompt = conversation.systemPrompt ?? FALLBACK_SYSTEM_PROMPT;
+
+    const aiResult = await this.aiProvider.complete([
+      { role: 'system', content: activeSystemPrompt },
+      ...chatHistory,
+    ]);
 
     const assistantMessage = Message.create({
       id: MessageId.generate(),
@@ -109,5 +120,25 @@ export class HandleIncomingMessageUseCase {
       aiResponseId: assistantMessage.id.value,
       aiResponseContent: replyText,
     };
+  }
+
+  private async buildSystemPrompt(): Promise<string> {
+    if (!this.programRepo || !this.promptBuilder) {
+      return FALLBACK_SYSTEM_PROMPT;
+    }
+    try {
+      const programs = await this.programRepo.findActive();
+      const prompt = this.promptBuilder.build(programs);
+      logger.info('[HandleIncomingMessage] System prompt built from DB', {
+        programs: programs.length,
+        promptLength: prompt.length,
+      });
+      return prompt;
+    } catch (err) {
+      logger.warn('[HandleIncomingMessage] Failed to load programs; using fallback prompt', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return FALLBACK_SYSTEM_PROMPT;
+    }
   }
 }

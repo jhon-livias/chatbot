@@ -1,6 +1,7 @@
 import { connectMongoDB } from './infrastructure/database/mongodb/connection.js';
 import { ConversationMongoRepository } from './infrastructure/database/mongodb/repositories/conversation.mongo-repository.js';
 import { UserMongoRepository } from './infrastructure/database/mongodb/repositories/user.mongo-repository.js';
+import { ProgramMongoRepository } from './infrastructure/database/mongodb/repositories/program.mongo-repository.js';
 import { DeepSeekAdapter } from './infrastructure/ai/deepseek/deepseek.adapter.js';
 import { DeepSeekService } from './infrastructure/ai/deepseek/deepseek.service.js';
 import { loadDeepSeekConfig } from './infrastructure/ai/deepseek/deepseek.config.js';
@@ -9,6 +10,7 @@ import { MetaWhatsAppAdapter } from './infrastructure/webhooks/meta/meta-whatsap
 import { WhatsAppController } from './infrastructure/webhooks/meta/whatsapp.controller.js';
 import { WhatsAppParserService } from './infrastructure/webhooks/meta/whatsapp-parser.service.js';
 import { HandleIncomingMessageUseCase } from './application/use-cases/handle-incoming-message/handle-incoming-message.usecase.js';
+import { SystemPromptBuilderService } from './application/services/system-prompt-builder.service.js';
 import { createWebhookRouter } from './infrastructure/http/routes/webhook.routes.js';
 import { createServer } from './infrastructure/http/server.js';
 import { logger } from './infrastructure/shared/logger.js';
@@ -23,12 +25,15 @@ async function bootstrap(): Promise<void> {
 
   const conversationRepo = new ConversationMongoRepository();
   const userRepo = new UserMongoRepository();
+  const programRepo = new ProgramMongoRepository();
 
   const deepSeekConfig = loadDeepSeekConfig();
   const templateService = new TemplateService();
   const deepSeekAdapter = new DeepSeekAdapter(deepSeekConfig);
   const deepSeekService = new DeepSeekService(deepSeekConfig, templateService);
   logger.info('[Bootstrap] AI engine initialized', { model: deepSeekConfig.model });
+
+  const promptBuilder = new SystemPromptBuilderService();
 
   const metaAdapter = new MetaWhatsAppAdapter({
     token: process.env['META_WHATSAPP_TOKEN'] ?? '',
@@ -42,6 +47,8 @@ async function bootstrap(): Promise<void> {
     userRepo,
     deepSeekAdapter,
     metaAdapter,
+    programRepo,
+    promptBuilder,
   );
 
   const whatsAppParser = new WhatsAppParserService();

@@ -2,54 +2,63 @@
 
 Producción: **https://chatbot.uprit.edu.pe**
 
-## Importar en Postman
+## Importar
 
 1. `postman/chatbot-uprit.postman_collection.json`
-2. `postman/chatbot-uprit.postman_environment.json`
+2. Environment (elige uno):
+   - **Recomendado:** generar desde el VPS (valores reales, no se commitea):
+     ```bash
+     ./vps/connect.sh "bash /opt/chatbot-uprit/deploy/generate-postman-env.sh" > postman/chatbot-uprit.postman_environment.local.json
+     ```
+     Importa `chatbot-uprit.postman_environment.local.json` en Postman.
+   - **Plantilla vacía:** `postman/chatbot-uprit.postman_environment.json` (rellena a mano)
 
-En Postman: **Import** → arrastra ambos archivos → activa el environment **Chatbot UPRIT — chatbot.uprit.edu.pe**.
+Activa el environment en la esquina superior derecha de Postman.
 
-## Configurar secrets
+## Secrets — NO son lo mismo
 
-Edita el environment con los valores del `.env` del servidor:
+| Postman | `.env` del VPS | Qué es | Dónde obtenerlo en Meta |
+| ------- | -------------- | ------ | ------------------------ |
+| `meta_webhook_verify_token` | `META_WEBHOOK_VERIFY_TOKEN` | Token de verificación (GET) | WhatsApp → Webhook → **Verify token** (lo defines tú) |
+| `webhook_secret` | `WEBHOOK_SECRET` | **App Secret** (POST, firma HMAC) | App → Configuración → Básica → **Clave secreta** (32 hex) |
 
-| Variable Postman | Variable `.env` |
-| ---------------- | --------------- |
-| `meta_webhook_verify_token` | `META_WEBHOOK_VERIFY_TOKEN` |
-| `webhook_secret` | `WEBHOOK_SECRET` |
+```
+GET  /webhook  →  meta_webhook_verify_token
+POST /webhook  →  webhook_secret (= App Secret)
+```
 
 ## Requests
 
-| Request | Método | Qué testea |
-| ------- | ------ | ---------- |
-| GET /health | GET | Servidor vivo |
-| GET /webhook — Meta verification | GET | Handshake de Meta (devuelve `hub.challenge`) |
-| GET /webhook — Invalid token | GET | Rechazo 403 con token malo |
-| POST /webhook — Text message | POST | Mensaje WhatsApp simulado (firma HMAC automática) |
-| POST /webhook — Invalid signature | POST | Rechazo 403 sin firma válida |
-| POST /webhook — Status update | POST | Evento ignorado, responde 200 |
+| Request | Resultado esperado |
+| ------- | ------------------ |
+| GET /health | `200` `{ "status": "ok" }` |
+| GET /webhook — Meta verification | `200` + body = `test123` |
+| GET /webhook — Invalid token | `403` |
+| POST /webhook — Invalid signature | `403` |
+| POST /webhook — Text message | `200` + respuesta en WhatsApp |
+| POST /webhook — Status update | `200` (evento ignorado) |
 
-## Orden sugerido
+## Orden de prueba
 
-1. **GET /health** → `200` con `{ "status": "ok" }`
-2. **GET /webhook — Meta verification** → devuelve `test123`
-3. **POST /webhook — Invalid signature** → `403`
-4. **POST /webhook — Text message** → `200` (dispara flujo real: IA + WhatsApp)
+1. GET /health
+2. GET /webhook — Meta verification
+3. POST /webhook — Invalid signature
+4. POST /webhook — Text message (número real en `test_wa_id`)
 
-## Grafana (logs)
+## Sincronizar tras cambiar `.env` en el VPS
 
-URL: **https://grafana.uprit.edu.pe**
+```bash
+# Regenerar environment de Postman
+./vps/connect.sh "bash /opt/chatbot-uprit/deploy/generate-postman-env.sh" > postman/chatbot-uprit.postman_environment.local.json
 
-1. Login con `GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD` del `.env` del servidor
-2. **Explore** → datasource **Loki**
-3. Query:
-
-```logql
-{container="chatbot-uprit-app"} |= "error"
+# Validar secrets en el servidor
+./vps/connect.sh "cd /opt/chatbot-uprit && bash deploy/audit-meta-secrets.sh && docker compose up -d app"
 ```
 
-## Nota
+## Grafana
 
-**POST /webhook — Text message** ejecuta el flujo real en producción. Úsalo con cuidado.
+**https://grafana.uprit.edu.pe** → Explore → Loki:
 
-Usa un número WhatsApp real en `test_wa_id` (con cuenta activa). Números ficticios como `51987654321` harán fallar el envío de la respuesta aunque el webhook responda 200.
+```logql
+{container="chatbot-uprit-app"} |= "WhatsApp"
+```

@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "c3d4e5f6-a7b8-9012-cdef-123456789012",
     "name": "Chatbot UPRIT",
-    "description": "Colección para testear el chatbot en producción: `https://chatbot.uprit.edu.pe`\n\n**Importar también:** `chatbot-uprit.postman_environment.json`\n\n**Antes de probar webhook POST:** configura `meta_webhook_verify_token` y `webhook_secret` en el environment (mismos valores que `.env` del servidor).\n\nEl script pre-request firma el body con HMAC-SHA256 (`x-hub-signature-256`) usando `webhook_secret`.",
+    "description": "Chatbot UPRIT en producción: https://chatbot.uprit.edu.pe\n\n## Secrets (NO son lo mismo)\n- `meta_webhook_verify_token` → META_WEBHOOK_VERIFY_TOKEN (GET verify)\n- `webhook_secret` → WEBHOOK_SECRET = Meta App Secret (32 hex, POST HMAC)\n\nGenerar environment desde VPS:\n`./vps/connect.sh \"bash /opt/chatbot-uprit/deploy/generate-postman-env.sh\" > postman/chatbot-uprit.postman_environment.local.json`",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [

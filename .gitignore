@@ -33,5 +33,8 @@ coverage/
 vps/*.pem
 vps/local.env
 
+# Postman environment con secrets reales (generado desde VPS)
+postman/*.local.json
+
 # Documentación interna
 documento_tecnico.md

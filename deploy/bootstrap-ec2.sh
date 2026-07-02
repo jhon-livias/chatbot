@@ -9,26 +9,13 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 VPS_DIR="${REPO_ROOT}/vps"
-PEM_FILE="${VPS_DIR}/RepositoryMagazine.pem"
-EC2_HOST="${EC2_HOST:-ec2-13-217-220-99.compute-1.amazonaws.com}"
-SSH_USER="${SSH_USER:-ubuntu}"
-REMOTE_DIR="${REMOTE_DIR:-/opt/chatbot-uprit}"
+# shellcheck source=ec2-profile.sh
+source "${SCRIPT_DIR}/ec2-profile.sh"
+ec2_profile_resolve "${VPS_DIR}"
+ec2_profile_ssh_opts
 REPO_URL="${REPO_URL:-https://github.com/jhon-livias/chatbot.git}"
 
-if [[ ! -f "${PEM_FILE}" ]]; then
-  echo "Error: PEM not found at ${PEM_FILE}" >&2
-  exit 1
-fi
-
-chmod 400 "${PEM_FILE}"
-
-SSH_OPTS=(
-  -i "${PEM_FILE}"
-  -o StrictHostKeyChecking=accept-new
-  -o ConnectTimeout=20
-)
-
-echo "==> Bootstrapping ${SSH_USER}@${EC2_HOST}"
+echo "==> Bootstrapping (${VPS_PROFILE}) ${SSH_USER}@${EC2_HOST}"
 
 ssh "${SSH_OPTS[@]}" "${SSH_USER}@${EC2_HOST}" bash -s <<'REMOTE'
 set -euo pipefail

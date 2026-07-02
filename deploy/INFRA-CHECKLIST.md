@@ -108,6 +108,7 @@ curl "https://chatbot.uprit.edu.pe/webhook?hub.mode=subscribe&hub.verify_token=T
 ## 6. SSL en el servidor (tras abrir puertos)
 
 ```bash
-ssh -i vps/RepositoryMagazine.pem ubuntu@ec2-13-217-220-99.compute-1.amazonaws.com
+ssh -i vps/RepositoryMagazine.pem ubuntu@ec2-3-235-20-207.compute-1.amazonaws.com
+# o: ./vps/connect.sh home
 sudo certbot --nginx -d chatbot.uprit.edu.pe
 ```

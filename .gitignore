@@ -29,8 +29,9 @@ Thumbs.db
 coverage/
 .nyc_output/
 
-# VPS (llaves SSH locales — no versionar)
-vps/
+# VPS (llaves SSH y perfil local — no versionar)
+vps/*.pem
+vps/local.env
 
 # Documentación interna
 documento_tecnico.md

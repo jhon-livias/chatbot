@@ -7,25 +7,19 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-PEM_FILE="${REPO_ROOT}/vps/RepositoryMagazine.pem"
+VPS_DIR="${REPO_ROOT}/vps"
 ENV_FILE="${REPO_ROOT}/.env"
-EC2_HOST="${EC2_HOST:-ec2-13-217-220-99.compute-1.amazonaws.com}"
-SSH_USER="${SSH_USER:-ubuntu}"
-REMOTE_DIR="${REMOTE_DIR:-/opt/chatbot-uprit}"
-
-if [[ ! -f "${PEM_FILE}" ]]; then
-  echo "Error: PEM not found at ${PEM_FILE}" >&2
-  exit 1
-fi
+# shellcheck source=ec2-profile.sh
+source "${SCRIPT_DIR}/ec2-profile.sh"
+ec2_profile_resolve "${VPS_DIR}"
+ec2_profile_ssh_opts
 
 if [[ ! -f "${ENV_FILE}" ]]; then
   echo "Error: .env not found at ${ENV_FILE}" >&2
   exit 1
 fi
 
-chmod 400 "${PEM_FILE}"
-
-echo "==> Uploading .env to ${SSH_USER}@${EC2_HOST}:${REMOTE_DIR}/.env"
+echo "==> Uploading .env (${VPS_PROFILE}) to ${SSH_USER}@${EC2_HOST}:${REMOTE_DIR}/.env"
 scp -i "${PEM_FILE}" -o ConnectTimeout=20 "${ENV_FILE}" "${SSH_USER}@${EC2_HOST}:${REMOTE_DIR}/.env"
 
 echo "==> Restarting app container"

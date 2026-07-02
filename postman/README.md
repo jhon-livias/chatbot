@@ -36,6 +36,18 @@ Edita el environment con los valores del `.env` del servidor:
 3. **POST /webhook — Invalid signature** → `403`
 4. **POST /webhook — Text message** → `200` (dispara flujo real: IA + WhatsApp)
 
+## Grafana (logs)
+
+URL: **https://grafana.uprit.edu.pe**
+
+1. Login con `GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD` del `.env` del servidor
+2. **Explore** → datasource **Loki**
+3. Query:
+
+```logql
+{container="chatbot-uprit-app"} |= "error"
+```
+
 ## Nota
 
 **POST /webhook — Text message** ejecuta el flujo real en producción. Úsalo con cuidado.

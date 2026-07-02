@@ -1,6 +1,8 @@
 import axios, { type AxiosInstance } from 'axios';
 import type { MessagingProviderPort, OutboundTextMessage, OutboundMessageResult } from '../../../application/ports/messaging-provider.port.js';
 import { logger } from '../../shared/logger.js';
+import { formatMetaApiError } from './meta-api-error.js';
+import { formatWhatsAppText, toMetaRecipientId } from './format-whatsapp-text.js';
 
 interface MetaConfig {
   token: string;
@@ -36,22 +38,33 @@ export class MetaWhatsAppAdapter implements MessagingProviderPort {
   }
 
   async sendTextMessage(message: OutboundTextMessage): Promise<OutboundMessageResult> {
-    logger.debug('[Meta] Sending text message', { to: message.to });
+    const to = toMetaRecipientId(message.to);
+    const body = formatWhatsAppText(message.body);
 
-    const response = await this.client.post<MetaSendMessageResponse>(
-      `/${this.phoneNumberId}/messages`,
-      {
-        messaging_product: 'whatsapp',
-        recipient_type: 'individual',
-        to: message.to,
-        type: 'text',
-        text: { preview_url: false, body: message.body },
-      },
-    );
+    logger.debug('[Meta] Sending text message', { to });
 
-    const messageId = response.data.messages[0]?.id ?? '';
-    logger.debug('[Meta] Message sent', { messageId });
+    try {
+      const response = await this.client.post<MetaSendMessageResponse>(
+        `/${this.phoneNumberId}/messages`,
+        {
+          messaging_product: 'whatsapp',
+          recipient_type: 'individual',
+          to,
+          type: 'text',
+          text: { preview_url: false, body },
+        },
+      );
 
-    return { messageId, status: 'sent' };
+      const messageId = response.data.messages[0]?.id ?? '';
+      logger.debug('[Meta] Message sent', { messageId, to });
+
+      return { messageId, status: 'sent' };
+    } catch (err) {
+      logger.error('[Meta] Failed to send message', {
+        to,
+        ...formatMetaApiError(err),
+      });
+      throw err;
+    }
   }
 }

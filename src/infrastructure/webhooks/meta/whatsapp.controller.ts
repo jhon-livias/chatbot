@@ -7,6 +7,7 @@ import type {
 } from './meta-whatsapp.types.js';
 import type { WhatsAppParserService } from './whatsapp-parser.service.js';
 import { logger } from '../../shared/logger.js';
+import { formatMetaApiError } from './meta-api-error.js';
 
 /**
  * HTTP controller for Meta WhatsApp webhook verification and inbound messages.
@@ -69,7 +70,7 @@ export class WhatsAppController {
         waId: message.waId,
         profileName: message.profileName,
         messageId: message.externalMessageId,
-        error: err,
+        ...formatMetaApiError(err),
       });
     }
   }

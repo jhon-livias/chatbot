@@ -42,7 +42,9 @@ fi
 
 echo "==> health check"
 sleep 3
-curl -fsS http://127.0.0.1:8080/health
+API_PORT="\$(grep -E '^API_PORT=' .env | cut -d= -f2- | tr -d '[:space:]' || true)"
+API_PORT="\${API_PORT:-8090}"
+curl -fsS "http://127.0.0.1:\${API_PORT}/health"
 echo
 docker compose ps app
 EOF

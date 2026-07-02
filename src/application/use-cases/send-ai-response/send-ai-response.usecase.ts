@@ -5,6 +5,7 @@ import { Message } from '../../../domain/entities/message.entity.js';
 import { MessageId } from '../../../domain/value-objects/message-id.vo.js';
 import type { SendAiResponseDto, SendAiResponseResult } from './send-ai-response.dto.js';
 import { DomainException } from '../../../domain/exceptions/domain.exception.js';
+import { formatWhatsAppText } from '../../../infrastructure/webhooks/meta/format-whatsapp-text.js';
 
 /**
  * Generates an AI response for an existing conversation and sends it via messaging.
@@ -51,14 +52,16 @@ export class SendAiResponseUseCase {
     const updatedConversation = conversation.addMessage(assistantMessage);
     await this.conversationRepo.save(updatedConversation);
 
+    const replyText = formatWhatsAppText(aiResult.content);
+
     await this.messagingProvider.sendTextMessage({
       to: conversation.phoneNumber,
-      body: aiResult.content,
+      body: replyText,
     });
 
     return {
       messageId: assistantMessage.id.value,
-      content: aiResult.content,
+      content: replyText,
       tokensUsed: aiResult.totalTokens,
     };
   }

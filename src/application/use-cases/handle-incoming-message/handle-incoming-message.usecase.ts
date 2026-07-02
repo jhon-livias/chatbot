@@ -12,10 +12,11 @@ import type {
   HandleIncomingMessageDto,
   HandleIncomingMessageResult,
 } from './handle-incoming-message.dto.js';
+import { formatWhatsAppText } from '../../../infrastructure/webhooks/meta/format-whatsapp-text.js';
 
 const CONTEXT_WINDOW_SIZE = 10;
 const SYSTEM_PROMPT =
-  'Eres un asistente virtual de UPRIT. Responde de manera concisa, amable y en el mismo idioma que el usuario.';
+  'Eres un asistente virtual de UPRIT. Responde de manera concisa, amable y en el mismo idioma que el usuario. Usa texto plano sin markdown (sin **, *, # ni bloques de código) porque el canal es WhatsApp.';
 
 /**
  * Orchestrates inbound WhatsApp messages: persist, call AI, and reply.
@@ -95,16 +96,18 @@ export class HandleIncomingMessageUseCase {
     conversation = conversation.addMessage(assistantMessage);
     await this.conversationRepo.save(conversation);
 
+    const replyText = formatWhatsAppText(aiResult.content);
+
     await this.messagingProvider.sendTextMessage({
       to: phoneNumber.value,
-      body: aiResult.content,
+      body: replyText,
     });
 
     return {
       conversationId: conversation.id,
       userMessageId: userMessage.id.value,
       aiResponseId: assistantMessage.id.value,
-      aiResponseContent: aiResult.content,
+      aiResponseContent: replyText,
     };
   }
 }

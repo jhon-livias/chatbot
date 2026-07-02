@@ -2,7 +2,7 @@ import type { Program } from '../../domain/entities/program.entity.js';
 
 const BASE_INSTRUCTIONS = `Eres el asistente virtual oficial de UPRIT. Responde de manera concisa, amable y profesional en el mismo idioma que el usuario. Usa SOLO texto plano sin markdown (sin **, *, #, ni bloques de codigo) porque el canal es WhatsApp. Si no tienes informacion suficiente para responder, indica amablemente que el equipo de admisiones puede ayudar.`;
 
-const MAX_PROMPT_CHARS = 32_000;
+const MAX_PROMPT_CHARS = 40_000;
 
 function truncate(text: string, max: number): string {
   return text.length <= max ? text : text.slice(0, max - 1) + '…';

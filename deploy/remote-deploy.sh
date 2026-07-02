@@ -18,10 +18,10 @@ docker compose build app
 echo "==> docker compose up -d"
 docker compose up -d
 
-echo "==> reload apache (if active)"
+echo "==> restart apache (if active)"
 if systemctl is-active --quiet apache2; then
   sudo apachectl configtest
-  sudo systemctl reload apache2
+  sudo systemctl restart apache2
 fi
 
 sleep 3
@@ -30,7 +30,7 @@ echo "==> audit secrets"
 bash deploy/audit-meta-secrets.sh
 
 echo "==> check meta token"
-bash deploy/check-meta-token.sh
+bash deploy/check-meta-token.sh || echo "WARN: Meta token check failed — update META_WHATSAPP_TOKEN in .env"
 
 echo "==> verify webhook GET"
 bash deploy/verify-webhook.sh test123

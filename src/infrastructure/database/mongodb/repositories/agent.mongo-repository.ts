@@ -64,12 +64,17 @@ export class AgentMongoRepository implements AgentRepository {
     await AgentModel.updateOne({ id: agentId }, { $set: { lastLoginAt: new Date() } });
   }
 
+  private normalizeWhatsapp(value: string): string {
+    const trimmed = value.trim();
+    return trimmed.startsWith('+') ? trimmed : `+${trimmed}`;
+  }
+
   private toDomain(doc: LeanAgent): Agent {
     return Agent.create({
       id: doc.id,
       name: doc.name,
       email: doc.email,
-      whatsapp: doc.whatsapp,
+      whatsapp: this.normalizeWhatsapp(doc.whatsapp),
       status: doc.status,
       userId: doc.userId,
       username: doc.username ?? null,

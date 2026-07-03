@@ -17,10 +17,11 @@ import bcrypt from 'bcryptjs';
 import { randomBytes } from 'crypto';
 
 const MONGODB_URI = process.env.MONGODB_URI ?? 'mongodb://localhost:27017/chatbot_uprit';
+const MONGODB_DB_NAME = process.env.MONGODB_DB_NAME ?? 'chatbot_uprit';
 const BCRYPT_ROUNDS = 10;
 
-await mongoose.connect(MONGODB_URI);
-console.log('✅ Connected to MongoDB\n');
+await mongoose.connect(MONGODB_URI, { dbName: MONGODB_DB_NAME });
+console.log(`✅ Connected to MongoDB (${MONGODB_DB_NAME})\n`);
 
 const Agent = mongoose.model(
   'Agent',

@@ -71,14 +71,11 @@ services:
         max-file: "5"
         tag: "{{.Name}}"
 
-    depends_on:
-      loki:
-        condition: service_started
-
   # ───────────────────────────────────────────────────────────────────────────
-  #  LOKI — Almacén e indexador de logs
+  #  LOKI — Almacén e indexador de logs (opcional: --profile observability)
   # ───────────────────────────────────────────────────────────────────────────
   loki:
+    profiles: [observability]
     image: grafana/loki:3.4.2
     container_name: chatbot-uprit-loki
     restart: unless-stopped
@@ -101,6 +98,7 @@ services:
   #  PROMTAIL — Recolector de logs (Docker → Loki)
   # ───────────────────────────────────────────────────────────────────────────
   promtail:
+    profiles: [observability]
     image: grafana/promtail:3.4.2
     container_name: chatbot-uprit-promtail
     restart: unless-stopped
@@ -119,6 +117,7 @@ services:
   #  GRAFANA — Visualización y consulta de logs
   # ───────────────────────────────────────────────────────────────────────────
   grafana:
+    profiles: [observability]
     image: grafana/grafana:11.5.2
     container_name: chatbot-uprit-grafana
     restart: unless-stopped

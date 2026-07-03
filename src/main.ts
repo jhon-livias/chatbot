@@ -2,6 +2,11 @@ import { connectMongoDB } from './infrastructure/database/mongodb/connection.js'
 import { ConversationMongoRepository } from './infrastructure/database/mongodb/repositories/conversation.mongo-repository.js';
 import { UserMongoRepository } from './infrastructure/database/mongodb/repositories/user.mongo-repository.js';
 import { ProgramMongoRepository } from './infrastructure/database/mongodb/repositories/program.mongo-repository.js';
+import { AgentMongoRepository } from './infrastructure/database/mongodb/repositories/agent.mongo-repository.js';
+import { PromptMongoRepository } from './infrastructure/database/mongodb/repositories/prompt.mongo-repository.js';
+import { FunnelIntentionMongoRepository } from './infrastructure/database/mongodb/repositories/funnel-intention.mongo-repository.js';
+import { ContextSourceDataMongoRepository } from './infrastructure/database/mongodb/repositories/context-source-data.mongo-repository.js';
+import { FacultyMongoRepository } from './infrastructure/database/mongodb/repositories/faculty.mongo-repository.js';
 import { DeepSeekAdapter } from './infrastructure/ai/deepseek/deepseek.adapter.js';
 import { DeepSeekService } from './infrastructure/ai/deepseek/deepseek.service.js';
 import { loadDeepSeekConfig } from './infrastructure/ai/deepseek/deepseek.config.js';
@@ -11,6 +16,7 @@ import { WhatsAppController } from './infrastructure/webhooks/meta/whatsapp.cont
 import { WhatsAppParserService } from './infrastructure/webhooks/meta/whatsapp-parser.service.js';
 import { HandleIncomingMessageUseCase } from './application/use-cases/handle-incoming-message/handle-incoming-message.usecase.js';
 import { SystemPromptBuilderService } from './application/services/system-prompt-builder.service.js';
+import { IntentRouterService } from './application/services/intent-router.service.js';
 import { createWebhookRouter } from './infrastructure/http/routes/webhook.routes.js';
 import { createServer } from './infrastructure/http/server.js';
 import { logger } from './infrastructure/shared/logger.js';
@@ -26,6 +32,11 @@ async function bootstrap(): Promise<void> {
   const conversationRepo = new ConversationMongoRepository();
   const userRepo = new UserMongoRepository();
   const programRepo = new ProgramMongoRepository();
+  const agentRepo = new AgentMongoRepository();
+  const promptRepo = new PromptMongoRepository();
+  const funnelIntentionRepo = new FunnelIntentionMongoRepository();
+  const contextSourceRepo = new ContextSourceDataMongoRepository();
+  const facultyRepo = new FacultyMongoRepository();
 
   const deepSeekConfig = loadDeepSeekConfig();
   const templateService = new TemplateService();
@@ -34,6 +45,15 @@ async function bootstrap(): Promise<void> {
   logger.info('[Bootstrap] AI engine initialized', { model: deepSeekConfig.model });
 
   const promptBuilder = new SystemPromptBuilderService();
+
+  const intentRouter = new IntentRouterService(
+    deepSeekAdapter,
+    programRepo,
+    promptRepo,
+    funnelIntentionRepo,
+    contextSourceRepo,
+    facultyRepo,
+  );
 
   const metaAdapter = new MetaWhatsAppAdapter({
     token: process.env['META_WHATSAPP_TOKEN'] ?? '',
@@ -49,6 +69,8 @@ async function bootstrap(): Promise<void> {
     metaAdapter,
     programRepo,
     promptBuilder,
+    agentRepo,
+    intentRouter,
   );
 
   const whatsAppParser = new WhatsAppParserService();

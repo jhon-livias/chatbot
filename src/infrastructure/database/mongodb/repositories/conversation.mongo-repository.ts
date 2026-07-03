@@ -1,5 +1,5 @@
 import type { ConversationRepository } from '../../../../domain/repositories/conversation.repository.js';
-import { Conversation } from '../../../../domain/entities/conversation.entity.js';
+import { Conversation, type HandoffState, type ConversationMetaData } from '../../../../domain/entities/conversation.entity.js';
 import { ConversationModel } from '../models/conversation.model.js';
 import { MessageModel } from '../models/message.model.js';
 import { Message } from '../../../../domain/entities/message.entity.js';
@@ -40,6 +40,11 @@ export class ConversationMongoRepository implements ConversationRepository {
         phoneNumber: props.phoneNumber,
         status: props.status,
         systemPrompt: props.systemPrompt,
+        handoffState: props.handoffState,
+        consecutiveHandoffs: props.consecutiveHandoffs,
+        careerId: props.careerId,
+        metaData: props.metaData,
+        currentProgramName: props.currentProgramName,
         updatedAt: props.updatedAt,
         createdAt: props.createdAt,
       },
@@ -113,6 +118,11 @@ export class ConversationMongoRepository implements ConversationRepository {
       status: doc['status'] as 'active' | 'idle' | 'closed',
       messages,
       ...(systemPrompt !== undefined && { systemPrompt }),
+      handoffState: ((doc['handoffState'] as HandoffState | undefined) ?? 'none'),
+      consecutiveHandoffs: ((doc['consecutiveHandoffs'] as number | undefined) ?? 0),
+      careerId: (doc['careerId'] as string | null | undefined) ?? null,
+      metaData: (doc['metaData'] as ConversationMetaData | null | undefined) ?? null,
+      currentProgramName: (doc['currentProgramName'] as string | null | undefined) ?? null,
       createdAt: doc['createdAt'] as Date,
       updatedAt: doc['updatedAt'] as Date,
     });

@@ -15,8 +15,8 @@ git pull --ff-only origin main
 echo "==> docker compose build app"
 docker compose build app
 
-echo "==> docker compose up -d"
-docker compose up -d
+echo "==> docker compose up -d app"
+docker compose up -d app
 
 echo "==> restart apache (if active)"
 if systemctl is-active --quiet apache2; then
@@ -46,6 +46,6 @@ echo "==> public health"
 curl -fsS "https://chatbot.uprit.edu.pe/health"
 echo
 
-docker compose ps app grafana
+docker compose ps app
 
 echo "==> Deploy finished OK"

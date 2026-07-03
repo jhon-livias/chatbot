@@ -166,8 +166,9 @@ export class IntentRouterService {
     careerId: string | null;
     metaData: ConversationMetaData | null;
     programName: string | null;
+    isFirstMessage?: boolean;
   }): Promise<IntentRoutingResult> {
-    const { messages, userMessage, careerId, metaData, programName } = params;
+    const { messages, userMessage, careerId, metaData, programName, isFirstMessage } = params;
 
     // Load all DB data in parallel
     const [intentions, prompts, programs, faculties] = await Promise.all([
@@ -196,7 +197,7 @@ export class IntentRouterService {
     }
 
     const intentContext = this.buildIdentifyContext(
-      messages, userMessage, careerId, metaData, programs, intentions,
+      messages, userMessage, careerId, metaData, programs, intentions, isFirstMessage,
     );
 
     const compiledIdentify = this.templateService.compile(identifyPrompt.template, intentContext);
@@ -248,7 +249,7 @@ export class IntentRouterService {
         result = await this.handleCategoria(messages, userMessage, newMetaData, programs, prompts, intentions, intentRaw);
         break;
       case 'GENERAL':
-        result = await this.handleGeneral(messages, userMessage, faculties, prompts, intentions, intentRaw);
+        result = await this.handleGeneral(messages, userMessage, faculties, programs, prompts, intentions, intentRaw, isFirstMessage);
         break;
       case 'EMBEDDING':
       case 'MULTIPLE':
@@ -256,7 +257,7 @@ export class IntentRouterService {
         break;
       default:
         logger.warn('[IntentRouter] Unknown routing group, falling back to GENERAL', { group: routingGroup });
-        result = await this.handleGeneral(messages, userMessage, faculties, prompts, intentions, intentRaw);
+        result = await this.handleGeneral(messages, userMessage, faculties, programs, prompts, intentions, intentRaw, isFirstMessage);
     }
 
     return {
@@ -348,9 +349,11 @@ export class IntentRouterService {
     messages: ReadonlyArray<Message>,
     userMessage: string,
     faculties: Array<{ id: string; name: string; description: string; slug: string; type: string }>,
+    programs: Program[],
     prompts: Prompt[],
     intentions: FunnelIntention[],
     fallback: { content: string; model: string; totalTokens: number },
+    isFirstMessage = false,
   ): Promise<IntentRoutingResult> {
     const intention = findIntentionByRole(intentions, 'GENERAL');
     const prompt = intention ? findPromptForIntention(prompts, intention.id) : undefined;
@@ -358,9 +361,18 @@ export class IntentRouterService {
 
     const lastUserMessages = messages.filter((m) => m.role === 'user').slice(-1);
     const ctx: Record<string, unknown> = {
+      isFirstMessage,
       messages: buildMessagesContext(messages),
       lastUserMessage: lastUserMessages.map((m) => ({ text: m.content })),
       faculties: faculties.map((f) => ({ id: f.id, name: f.name, description: f.description })),
+      // Expose all programs so the prompt can list available study levels on first contact
+      careers: programs.map((p) => ({
+        name: p.name,
+        modalities: p.modalities.map((mod) => ({
+          careerType: mod.careerType,
+          modalities: mod.modalities,
+        })),
+      })),
     };
     return this.compileAndCallWithCategory(prompt.template, ctx, userMessage, fallback, null);
   }
@@ -461,8 +473,10 @@ export class IntentRouterService {
     metaData: ConversationMetaData | null,
     programs: Program[],
     intentions: FunnelIntention[],
+    isFirstMessage = false,
   ): Record<string, unknown> {
     return {
+      isFirstMessage,
       user: {
         careerId: careerId ?? null,
         metaData: metaData
@@ -482,7 +496,7 @@ export class IntentRouterService {
           modalities: mod.modalities,
         })),
         facultyId: p.facultyId,
-        faculty: { name: '' }, // faculty name join would need another query; empty is acceptable for routing
+        faculty: { name: '' },
         tags: p.tags,
       })),
       messages: buildMessagesContext(messages),

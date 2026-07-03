@@ -67,6 +67,7 @@ export class HandleIncomingMessageUseCase {
   async execute(dto: HandleIncomingMessageDto): Promise<HandleIncomingMessageResult> {
     const phoneNumber = PhoneNumber.create(dto.fromPhoneNumber);
 
+    // ── 1. Upsert user — always resolved before anything else ────────────
     let user = await this.userRepo.findByPhoneNumber(phoneNumber);
     if (!user) {
       user = User.create({
@@ -76,10 +77,14 @@ export class HandleIncomingMessageUseCase {
         updatedAt: new Date(),
       });
       user = await this.userRepo.save(user);
+      logger.info('[HandleIncomingMessage] New user created', { phone: phoneNumber.value });
     }
 
+    // ── 2. Upsert conversation — persist to DB immediately so context is never lost ──
     let conversation = await this.conversationRepo.findActiveByPhoneNumber(phoneNumber.value);
+    let isFirstMessage = false;
     if (!conversation) {
+      isFirstMessage = true;
       const systemPrompt = await this.buildSystemPrompt();
       conversation = Conversation.create({
         id: randomUUID(),
@@ -96,9 +101,15 @@ export class HandleIncomingMessageUseCase {
         createdAt: new Date(),
         updatedAt: new Date(),
       });
+      // Persist immediately so a simultaneous message won't create a duplicate conversation
+      await this.conversationRepo.save(conversation);
+      logger.info('[HandleIncomingMessage] New conversation created and persisted', {
+        conversationId: conversation.id,
+        phone: phoneNumber.value,
+      });
     }
 
-    // --- Handoff pending: user is answering the yes/no confirmation ---
+    // ── 3. Handoff pending: user is answering the yes/no confirmation ────
     if (conversation.handoffState === 'pending') {
       return this.handlePendingHandoffReply(conversation, dto, phoneNumber.value);
     }
@@ -140,6 +151,7 @@ export class HandleIncomingMessageUseCase {
           careerId: conversation.careerId,
           metaData: conversation.metaData,
           programName: conversation.currentProgramName,
+          isFirstMessage,
         });
         aiContent = routerResult.content;
         aiModel = routerResult.model;
@@ -461,15 +473,17 @@ export class HandleIncomingMessageUseCase {
     conversation: Conversation,
     _userContent: string,
   ): Promise<{ content: string; model: string; totalTokens: number }> {
-    // The user message is already stored in conversation.messages — use that window.
+    // Always rebuild system prompt with fresh data from DB so every message
+    // has the latest program/admission context injected — never use a stale stored copy.
+    const freshSystemPrompt = await this.buildSystemPrompt();
+
     const recentMessages = conversation.getLastNMessages(CONTEXT_WINDOW_SIZE);
     const chatHistory = recentMessages.map((m) => ({
       role: m.role as 'user' | 'assistant',
       content: m.content,
     }));
-    const activeSystemPrompt = conversation.systemPrompt ?? FALLBACK_SYSTEM_PROMPT;
     const result = await this.aiProvider.complete([
-      { role: 'system', content: activeSystemPrompt },
+      { role: 'system', content: freshSystemPrompt },
       ...chatHistory,
     ]);
     return { content: result.content, model: result.model, totalTokens: result.totalTokens };
@@ -477,18 +491,19 @@ export class HandleIncomingMessageUseCase {
 
   private async buildSystemPrompt(): Promise<string> {
     if (!this.programRepo || !this.promptBuilder) {
+      logger.warn('[HandleIncomingMessage] programRepo or promptBuilder not available — using fallback prompt');
       return FALLBACK_SYSTEM_PROMPT;
     }
     try {
       const programs = await this.programRepo.findActive();
       const prompt = this.promptBuilder.build(programs);
-      logger.info('[HandleIncomingMessage] System prompt built from DB', {
+      logger.info('[HandleIncomingMessage] System prompt built fresh from DB', {
         programs: programs.length,
         promptLength: prompt.length,
       });
       return prompt;
     } catch (err) {
-      logger.warn('[HandleIncomingMessage] Failed to load programs; using fallback prompt', {
+      logger.warn('[HandleIncomingMessage] Failed to load programs — using fallback prompt', {
         error: err instanceof Error ? err.message : String(err),
       });
       return FALLBACK_SYSTEM_PROMPT;

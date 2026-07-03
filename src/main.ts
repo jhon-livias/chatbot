@@ -20,6 +20,8 @@ import { HandleIncomingMessageUseCase } from './application/use-cases/handle-inc
 import { SystemPromptBuilderService } from './application/services/system-prompt-builder.service.js';
 import { IntentRouterService } from './application/services/intent-router.service.js';
 import { createWebhookRouter } from './infrastructure/http/routes/webhook.routes.js';
+import { createAuthRouter } from './infrastructure/http/routes/auth.routes.js';
+import { createAgentInboxRouter } from './infrastructure/http/routes/agent-inbox.routes.js';
 import { createServer } from './infrastructure/http/server.js';
 import { logger } from './infrastructure/shared/logger.js';
 
@@ -87,10 +89,18 @@ async function bootstrap(): Promise<void> {
   );
 
   const webhookRouter = createWebhookRouter(whatsAppController);
+  const authRouter = createAuthRouter(agentRepo);
+  const agentInboxRouter = createAgentInboxRouter(conversationRepo, metaAdapter, funnelMessageRepo);
 
-  createServer(webhookRouter, {
+  const corsOrigins = [
+    ...(process.env['CORS_ORIGINS'] ?? '').split(',').filter(Boolean),
+    ...(process.env['ADMISION_CORS_ORIGIN'] ? [process.env['ADMISION_CORS_ORIGIN']] : []),
+    'http://localhost:5173',
+  ];
+
+  createServer(webhookRouter, authRouter, agentInboxRouter, {
     port: Number(process.env['PORT'] ?? 3000),
-    corsOrigins: (process.env['CORS_ORIGINS'] ?? '').split(',').filter(Boolean),
+    corsOrigins: [...new Set(corsOrigins)],
   });
 }
 

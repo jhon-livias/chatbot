@@ -8,6 +8,9 @@ export interface AgentRepository {
   findAll(): Promise<Agent[]>;
   findActive(): Promise<Agent[]>;
   findByUserId(userId: string): Promise<Agent[]>;
+  findByUsername(username: string): Promise<Agent | null>;
   save(agent: Agent): Promise<Agent>;
   delete(id: string): Promise<void>;
+  updatePasswordHash(agentId: string, hash: string): Promise<void>;
+  updateLastLogin(agentId: string): Promise<void>;
 }

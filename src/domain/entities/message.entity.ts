@@ -1,6 +1,6 @@
 import { MessageId } from '../value-objects/message-id.vo.js';
 
-export type MessageRole = 'user' | 'assistant' | 'system';
+export type MessageRole = 'user' | 'assistant' | 'system' | 'agent';
 export type MessageStatus = 'received' | 'processing' | 'sent' | 'failed' | 'read';
 
 export interface MessageProps {
@@ -55,6 +55,10 @@ export class Message {
 
   isFromAssistant(): boolean {
     return this.role === 'assistant';
+  }
+
+  isFromAgent(): boolean {
+    return this.role === 'agent';
   }
 
   toProps(): MessageProps {

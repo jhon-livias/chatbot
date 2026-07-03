@@ -1,6 +1,6 @@
 import { Schema, model, type Document } from 'mongoose';
 
-export type MessageRole = 'user' | 'assistant' | 'system';
+export type MessageRole = 'user' | 'assistant' | 'system' | 'agent';
 export type MessageStatus = 'received' | 'processing' | 'sent' | 'failed' | 'read';
 
 export interface MessageDocument extends Document<string> {
@@ -20,7 +20,7 @@ const messageSchema = new Schema<MessageDocument>(
     externalId: { type: String, sparse: true },
     role: {
       type: String,
-      enum: ['user', 'assistant', 'system'] satisfies MessageRole[],
+      enum: ['user', 'assistant', 'system', 'agent'] satisfies MessageRole[],
       required: true,
     },
     content: { type: String, required: true },

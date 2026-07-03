@@ -167,6 +167,14 @@ export class Conversation {
     });
   }
 
+  withLastAgentMessageAt(at: Date): Conversation {
+    return Conversation.create({
+      ...this.toProps(),
+      lastAgentMessageAt: at,
+      updatedAt: new Date(),
+    });
+  }
+
   incrementUnread(): Conversation {
     return Conversation.create({
       ...this.toProps(),

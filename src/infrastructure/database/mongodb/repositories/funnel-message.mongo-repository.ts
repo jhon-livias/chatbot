@@ -39,6 +39,24 @@ export class FunnelMessageMongoRepository {
     });
   }
 
+  async saveAgentMessage(params: {
+    funnelUserId: string;
+    text: string;
+    agentId: string;
+  }): Promise<void> {
+    await FunnelMessageModel.create({
+      id: randomUUID(),
+      userId: params.funnelUserId,
+      text: params.text,
+      role: 'agent',
+      direction: 'outbound',
+      platform: 'whatsapp',
+      timestamp: new Date(),
+      isAnswered: true,
+      agentId: params.agentId,
+    });
+  }
+
   /** Mark the last unanswered inbound message of a user as answered. */
   async markLastUserMessageAnswered(funnelUserId: string): Promise<void> {
     await FunnelMessageModel.findOneAndUpdate(

@@ -36,6 +36,31 @@ export class ConversationMongoRepository implements ConversationRepository {
     );
   }
 
+  async findHumanByAgentId(
+    agentId: string,
+    opts: { limit: number; offset: number },
+  ): Promise<Conversation[]> {
+    const docs = await ConversationModel.find({
+      mode: 'human',
+      status: 'active',
+      assignedAgentId: agentId,
+    })
+      .sort({ updatedAt: -1 })
+      .skip(opts.offset)
+      .limit(opts.limit)
+      .lean();
+
+    return docs.map((doc) => this.toDomain(doc, []));
+  }
+
+  async countHumanByAgentId(agentId: string): Promise<number> {
+    return ConversationModel.countDocuments({
+      mode: 'human',
+      status: 'active',
+      assignedAgentId: agentId,
+    });
+  }
+
   async save(conversation: Conversation): Promise<Conversation> {
     const props = conversation.toProps();
     await ConversationModel.findByIdAndUpdate(

@@ -12,12 +12,15 @@ export interface AgentProps {
   whatsapp: string;
   status: AgentStatus;
   userId: string;
+  username: string | null;
+  lastLoginAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
 
 /**
  * Domain entity representing a human agent who receives handoff notifications.
+ * passwordHash is intentionally excluded from props to avoid accidental exposure.
  */
 export class Agent {
   readonly id: string;
@@ -26,6 +29,8 @@ export class Agent {
   readonly whatsapp: string;
   readonly status: AgentStatus;
   readonly userId: string;
+  readonly username: string | null;
+  readonly lastLoginAt: Date | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
 
@@ -36,6 +41,8 @@ export class Agent {
     this.whatsapp = props.whatsapp;
     this.status = props.status;
     this.userId = props.userId;
+    this.username = props.username ?? null;
+    this.lastLoginAt = props.lastLoginAt ?? null;
     this.createdAt = props.createdAt;
     this.updatedAt = props.updatedAt;
   }
@@ -75,6 +82,8 @@ export class Agent {
       whatsapp: this.whatsapp,
       status: this.status,
       userId: this.userId,
+      username: this.username,
+      lastLoginAt: this.lastLoginAt,
       createdAt: this.createdAt,
       updatedAt: this.updatedAt,
     };

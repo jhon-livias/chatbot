@@ -26,7 +26,8 @@ const CONTEXT_WINDOW_SIZE = 10;
 const MAX_CONSECUTIVE_HANDOFFS = 3;
 
 const FALLBACK_SYSTEM_PROMPT =
-  'Eres Angela, asesora estudiantil de UPRIT. Responde de manera concisa, amable y en el mismo idioma que el usuario. Usa texto plano sin markdown porque el canal es WhatsApp. Responde UNICAMENTE con el token HANDOFF_TRIGGER cuando el usuario pida hablar con un asesor o cuando no tengas informacion para responder.';
+  'Eres Angela, asesora estudiantil de UPRIT. Responde de manera concisa, amable y en el mismo idioma que el usuario. Usa texto plano sin markdown porque el canal es WhatsApp. ' +
+  'REGLA CRITICA: Cuando no tengas informacion suficiente o el usuario pida hablar con un asesor, tu respuesta debe ser EXCLUSIVAMENTE el token: HANDOFF_TRIGGER — sin ningún texto antes ni después.';
 
 const HANDOFF_CONFIRMATION_MSG =
   '¿Deseas que te contacte un asesor de admisiones para brindarte información personalizada? (Sí/No)';
@@ -163,6 +164,13 @@ export class HandleIncomingMessageUseCase {
       aiTokens = fallbackResult.totalTokens;
     }
 
+    // Strip any HANDOFF_TRIGGER token suffix the model may have appended to a normal response.
+    // This keeps the conversation history clean regardless of what the model format chose.
+    const aiContentClean = aiContent
+      .replace(/\s*<<HANDOFF_TRIGGER>>\s*$/g, '')
+      .replace(/\s*HANDOFF_TRIGGER\s*$/g, '')
+      .trim();
+
     const isHandoff = this.detectHandoffTrigger(aiContent);
 
     if (isHandoff) {
@@ -232,7 +240,7 @@ export class HandleIncomingMessageUseCase {
       id: MessageId.generate(),
       conversationId: conversation.id,
       role: 'assistant',
-      content: aiContent,
+      content: aiContentClean,
       status: 'processing',
       timestamp: new Date(),
       metadata: { model: aiModel, tokens: aiTokens },
@@ -244,14 +252,13 @@ export class HandleIncomingMessageUseCase {
       .withIntentContext(newCareerId, newMetaData, newProgramName);
     await this.conversationRepo.save(conversation);
 
-    const replyText = formatWhatsAppText(aiContent);
+    const replyText = formatWhatsAppText(aiContentClean);
 
     await this.messagingProvider.sendTextMessage({
       to: phoneNumber.value,
       body: replyText,
     });
 
-    // Save bot reply to funnel_messages and update lead stage
     await this.saveFunnelMessage(funnelUserId, replyText, 'bot');
     if (purchaseCategory) {
       await this.updateFunnelUserCategory(funnelUserId, purchaseCategory);
@@ -337,17 +344,10 @@ export class HandleIncomingMessageUseCase {
     };
   }
 
-  /** Returns true when the AI response is a HANDOFF_TRIGGER token. */
+  /** Returns true when the AI response contains a HANDOFF_TRIGGER token anywhere. */
   private detectHandoffTrigger(text: string): boolean {
-    const trimmed = text.trim();
-    // Exact token formats from the prompts specification
-    return (
-      trimmed === 'HANDOFF_TRIGGER' ||
-      trimmed === '<<HANDOFF_TRIGGER>>' ||
-      // Tolerate minor surrounding whitespace / newlines
-      /^HANDOFF_TRIGGER\s*$/.test(trimmed) ||
-      /^<<HANDOFF_TRIGGER>>\s*$/.test(trimmed)
-    );
+    // Handle both token formats, whether the model puts them alone or at the end of a sentence
+    return /HANDOFF_TRIGGER/.test(text) || /<<HANDOFF_TRIGGER>>/.test(text);
   }
 
   /** Picks an active agent, sends them a WhatsApp notification, and returns the agent. */

@@ -7,6 +7,8 @@ import type { AiProviderPort } from '../../ports/ai-provider.port.js';
 import type { MessagingProviderPort } from '../../ports/messaging-provider.port.js';
 import type { SystemPromptBuilderService } from '../../services/system-prompt-builder.service.js';
 import type { IntentRouterService } from '../../services/intent-router.service.js';
+import type { FunnelUserMongoRepository } from '../../../infrastructure/database/mongodb/repositories/funnel-user.mongo-repository.js';
+import type { FunnelMessageMongoRepository } from '../../../infrastructure/database/mongodb/repositories/funnel-message.mongo-repository.js';
 import { PhoneNumber } from '../../../domain/value-objects/phone-number.vo.js';
 import { MessageId } from '../../../domain/value-objects/message-id.vo.js';
 import { User } from '../../../domain/entities/user.entity.js';
@@ -57,6 +59,8 @@ export class HandleIncomingMessageUseCase {
     private readonly promptBuilder?: SystemPromptBuilderService,
     private readonly agentRepo?: AgentRepository,
     private readonly intentRouter?: IntentRouterService,
+    private readonly funnelUserRepo?: FunnelUserMongoRepository,
+    private readonly funnelMessageRepo?: FunnelMessageMongoRepository,
   ) {}
 
   async execute(dto: HandleIncomingMessageDto): Promise<HandleIncomingMessageResult> {
@@ -112,6 +116,12 @@ export class HandleIncomingMessageUseCase {
     conversation = conversation.addMessage(userMessage);
     await this.conversationRepo.save(conversation);
 
+    // ── Upsert funnel_users so the admin panel can see this lead ──────────
+    const funnelUserId = await this.upsertFunnelUser(phoneNumber.value);
+
+    // Save the inbound message to funnel_messages
+    await this.saveFunnelMessage(funnelUserId, dto.content, 'user');
+
     // ── AI response: try intent routing first, fall back to monolithic prompt ──
     let aiContent: string;
     let aiModel: string;
@@ -119,6 +129,7 @@ export class HandleIncomingMessageUseCase {
     let newCareerId = conversation.careerId;
     let newMetaData = conversation.metaData;
     let newProgramName = conversation.currentProgramName;
+    let purchaseCategory: string | null = null;
 
     if (this.intentRouter) {
       try {
@@ -135,6 +146,7 @@ export class HandleIncomingMessageUseCase {
         newCareerId = routerResult.newCareerId ?? conversation.careerId;
         newMetaData = routerResult.newMetaData ?? conversation.metaData;
         newProgramName = routerResult.newProgramName ?? conversation.currentProgramName;
+        purchaseCategory = routerResult.purchaseCategory;
       } catch (routerErr) {
         logger.warn('[HandleIncomingMessage] IntentRouter failed — falling back to monolithic prompt', {
           error: routerErr instanceof Error ? routerErr.message : String(routerErr),
@@ -174,7 +186,13 @@ export class HandleIncomingMessageUseCase {
           body: HANDOFF_LOOP_MSG,
         });
 
-        await this.tryNotifyAgent(conversation, phoneNumber.value);
+        await this.saveFunnelMessage(funnelUserId, HANDOFF_LOOP_MSG, 'bot');
+        await this.updateFunnelUserStage(funnelUserId, 'HANDOFF', null);
+
+        const agent = await this.tryNotifyAgent(conversation, phoneNumber.value);
+        if (agent && funnelUserId) {
+          await this.updateFunnelUserStage(funnelUserId, 'HANDOFF', agent.whatsapp);
+        }
 
         return {
           conversationId: conversation.id,
@@ -192,6 +210,9 @@ export class HandleIncomingMessageUseCase {
         to: phoneNumber.value,
         body: HANDOFF_CONFIRMATION_MSG,
       });
+
+      await this.saveFunnelMessage(funnelUserId, HANDOFF_CONFIRMATION_MSG, 'bot');
+      await this.updateFunnelUserStage(funnelUserId, 'DECISION', null);
 
       logger.info('[HandleIncomingMessage] HANDOFF_TRIGGER detected — asking for confirmation', {
         phone: phoneNumber.value,
@@ -230,6 +251,12 @@ export class HandleIncomingMessageUseCase {
       body: replyText,
     });
 
+    // Save bot reply to funnel_messages and update lead stage
+    await this.saveFunnelMessage(funnelUserId, replyText, 'bot');
+    if (purchaseCategory) {
+      await this.updateFunnelUserCategory(funnelUserId, purchaseCategory);
+    }
+
     return {
       conversationId: conversation.id,
       userMessageId: userMessage.id.value,
@@ -259,6 +286,10 @@ export class HandleIncomingMessageUseCase {
 
     conversation = conversation.addMessage(userMessage);
 
+    // Ensure funnel user exists for this phone
+    const funnelUserId = await this.upsertFunnelUser(phoneNumberValue);
+    await this.saveFunnelMessage(funnelUserId, dto.content, 'user');
+
     const isAffirmative = AFFIRMATIVE_PATTERN.test(dto.content.trim());
 
     if (isAffirmative) {
@@ -270,11 +301,12 @@ export class HandleIncomingMessageUseCase {
         body: HANDOFF_CONFIRMED_MSG,
       });
 
-      await this.tryNotifyAgent(conversation, phoneNumberValue);
+      await this.saveFunnelMessage(funnelUserId, HANDOFF_CONFIRMED_MSG, 'bot');
 
-      logger.info('[HandleIncomingMessage] Handoff confirmed by user', {
-        phone: phoneNumberValue,
-      });
+      const agent = await this.tryNotifyAgent(conversation, phoneNumberValue);
+      await this.updateFunnelUserStage(funnelUserId, 'HANDOFF', agent?.whatsapp ?? null);
+
+      logger.info('[HandleIncomingMessage] Handoff confirmed by user', { phone: phoneNumberValue });
 
       return {
         conversationId: conversation.id,
@@ -293,9 +325,9 @@ export class HandleIncomingMessageUseCase {
       body: HANDOFF_DECLINED_MSG,
     });
 
-    logger.info('[HandleIncomingMessage] Handoff declined by user', {
-      phone: phoneNumberValue,
-    });
+    await this.saveFunnelMessage(funnelUserId, HANDOFF_DECLINED_MSG, 'bot');
+
+    logger.info('[HandleIncomingMessage] Handoff declined by user', { phone: phoneNumberValue });
 
     return {
       conversationId: conversation.id,
@@ -318,22 +350,21 @@ export class HandleIncomingMessageUseCase {
     );
   }
 
-  /** Picks an active agent and sends them a WhatsApp notification about the new lead. */
-  private async tryNotifyAgent(conversation: Conversation, leadPhone: string): Promise<void> {
-    if (!this.agentRepo) return;
+  /** Picks an active agent, sends them a WhatsApp notification, and returns the agent. */
+  private async tryNotifyAgent(conversation: Conversation, leadPhone: string): Promise<Agent | null> {
+    if (!this.agentRepo) return null;
 
     let agent: Agent | null = null;
     try {
       const agents = await this.agentRepo.findActive();
       if (agents.length === 0) {
         logger.warn('[HandleIncomingMessage] No active agents found for handoff notification');
-        return;
+        return null;
       }
-      // Round-robin by conversation count would be ideal, but random pick is safe for now
       agent = agents[Math.floor(Math.random() * agents.length)]!;
     } catch (err) {
       logger.error('[HandleIncomingMessage] Failed to fetch agents for handoff', { error: err });
-      return;
+      return null;
     }
 
     const lastMessages = conversation.getLastNMessages(5);
@@ -352,10 +383,7 @@ export class HandleIncomingMessageUseCase {
       `El lead ha solicitado ser contactado por un asesor. Por favor comunicate con el a la brevedad.`;
 
     try {
-      await this.messagingProvider.sendTextMessage({
-        to: agent.whatsapp,
-        body: notification,
-      });
+      await this.messagingProvider.sendTextMessage({ to: agent.whatsapp, body: notification });
       logger.info('[HandleIncomingMessage] Agent notified of handoff', {
         agent: agent.name,
         agentWhatsapp: agent.whatsapp,
@@ -367,6 +395,63 @@ export class HandleIncomingMessageUseCase {
         error: err instanceof Error ? err.message : String(err),
       });
     }
+    return agent;
+  }
+
+  // ── Funnel helpers (fire-and-forget; errors logged but never thrown) ─────
+
+  private async upsertFunnelUser(phoneNumber: string): Promise<string> {
+    if (!this.funnelUserRepo) return '';
+    try {
+      return await this.funnelUserRepo.upsert({ senderId: phoneNumber });
+    } catch (err) {
+      logger.warn('[HandleIncomingMessage] Failed to upsert funnel_user', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return '';
+    }
+  }
+
+  private async saveFunnelMessage(
+    funnelUserId: string,
+    text: string,
+    role: 'user' | 'bot',
+  ): Promise<void> {
+    if (!this.funnelMessageRepo || !funnelUserId) return;
+    try {
+      if (role === 'user') {
+        await this.funnelMessageRepo.saveUserMessage({ funnelUserId, text });
+      } else {
+        await this.funnelMessageRepo.saveBotMessage({ funnelUserId, text });
+      }
+    } catch (err) {
+      logger.warn('[HandleIncomingMessage] Failed to save funnel_message', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  private async updateFunnelUserStage(
+    funnelUserId: string,
+    stage: 'AWARENESS' | 'CONSIDERATION' | 'DECISION' | 'HANDOFF' | 'CLOSED',
+    assignedAgent: string | null,
+  ): Promise<void> {
+    if (!this.funnelUserRepo || !funnelUserId) return;
+    try {
+      await this.funnelUserRepo.updateById({ id: funnelUserId, stage, assignedAgent });
+    } catch { /* ignore */ }
+  }
+
+  private async updateFunnelUserCategory(funnelUserId: string, purchaseCategory: string): Promise<void> {
+    if (!this.funnelUserRepo || !funnelUserId) return;
+    const stage = await this.funnelUserRepo.stageFromCategory(purchaseCategory);
+    try {
+      await this.funnelUserRepo.updateById({
+        id: funnelUserId,
+        stage,
+        userCategory: purchaseCategory as 'first_contact' | 'interested' | 'ready_to_buy' | 'not_interested' | 'unknown',
+      });
+    } catch { /* ignore */ }
   }
 
   private async runMonolithicPrompt(

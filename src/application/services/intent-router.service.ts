@@ -19,6 +19,25 @@ export interface IntentRoutingResult {
   newCareerId: string | null;
   newMetaData: ConversationMetaData | null;
   newProgramName: string | null;
+  purchaseCategory: string | null;
+}
+
+/**
+ * Prompts 4 (Categoría) and 5 (General) return JSON: {"message":"...","purchaseCategory":"..."}.
+ * Extracts both fields safely; falls back to raw text if not JSON.
+ */
+function extractMessageAndCategory(raw: string): { message: string; purchaseCategory: string | null } {
+  const trimmed = raw.trim();
+  const start = trimmed.indexOf('{');
+  if (start === -1) return { message: trimmed, purchaseCategory: null };
+  try {
+    const obj = JSON.parse(trimmed.slice(start)) as Record<string, unknown>;
+    const message = typeof obj['message'] === 'string' ? obj['message'] : trimmed;
+    const purchaseCategory = typeof obj['purchaseCategory'] === 'string' ? obj['purchaseCategory'] : null;
+    return { message, purchaseCategory };
+  } catch {
+    return { message: trimmed, purchaseCategory: null };
+  }
 }
 
 // -----------------------------------------------------------------------
@@ -236,7 +255,6 @@ export class IntentRouterService {
         result = await this.handleEmbeddingSearch(messages, userMessage, programName, programs, prompts, intentions, intentRaw);
         break;
       default:
-        // Unknown intent — fall back to general info
         logger.warn('[IntentRouter] Unknown routing group, falling back to GENERAL', { group: routingGroup });
         result = await this.handleGeneral(messages, userMessage, faculties, prompts, intentions, intentRaw);
     }
@@ -323,7 +341,7 @@ export class IntentRouterService {
         })),
       })),
     };
-    return this.compileAndCall(prompt.template, ctx, userMessage, fallback, null);
+    return this.compileAndCallWithCategory(prompt.template, ctx, userMessage, fallback, null);
   }
 
   private async handleGeneral(
@@ -344,7 +362,7 @@ export class IntentRouterService {
       lastUserMessage: lastUserMessages.map((m) => ({ text: m.content })),
       faculties: faculties.map((f) => ({ id: f.id, name: f.name, description: f.description })),
     };
-    return this.compileAndCall(prompt.template, ctx, userMessage, fallback, null);
+    return this.compileAndCallWithCategory(prompt.template, ctx, userMessage, fallback, null);
   }
 
   private async handleEmbeddingSearch(
@@ -379,7 +397,7 @@ export class IntentRouterService {
 
       // Detect handoff trigger inside Prompt 6 response
       if (rawQuery === 'HANDOFF_TRIGGER') {
-        return { content: 'HANDOFF_TRIGGER', model: embRaw.model, totalTokens: embRaw.totalTokens, newCareerId: null, newMetaData: null, newProgramName: null };
+        return { content: 'HANDOFF_TRIGGER', model: embRaw.model, totalTokens: embRaw.totalTokens, newCareerId: null, newMetaData: null, newProgramName: null, purchaseCategory: null };
       }
 
       // Parse the query format: "[PROGRAM_NAME] | [SEMANTIC_QUERY]" or just "[SEMANTIC_QUERY]"
@@ -406,9 +424,6 @@ export class IntentRouterService {
     const multiPrompt = multiIntention ? findPromptForIntention(prompts, multiIntention.id) : undefined;
 
     if (!multiPrompt || contextDocs.length === 0) {
-      if (contextDocs.length === 0) {
-        return this.fallbackResult(fallback);
-      }
       return this.fallbackResult(fallback);
     }
 
@@ -431,7 +446,8 @@ export class IntentRouterService {
     };
 
     const newProgramName = resolvedProgramName ?? (foundPrograms[0]?.name ?? null);
-    return this.compileAndCall(multiPrompt.template, multiCtx, userMessage, fallback, newProgramName);
+    const multiResult = await this.compileAndCall(multiPrompt.template, multiCtx, userMessage, fallback, newProgramName);
+    return { ...multiResult, newProgramName };
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -502,6 +518,7 @@ export class IntentRouterService {
       .join('\n\n');
   }
 
+  /** For plain-text responding prompts (2, 3, 7). */
   private async compileAndCall(
     template: string,
     ctx: Record<string, unknown>,
@@ -509,36 +526,66 @@ export class IntentRouterService {
     fallback: { content: string; model: string; totalTokens: number },
     newProgramName: string | null,
   ): Promise<IntentRoutingResult> {
+    const result = await this.runPrompt(template, ctx, userMessage, fallback);
+    if (!result) return this.fallbackResult(fallback);
+    return {
+      content: result.content,
+      model: result.model,
+      totalTokens: result.totalTokens,
+      newCareerId: null,
+      newMetaData: null,
+      newProgramName,
+      purchaseCategory: null,
+    };
+  }
+
+  /** For JSON-responding prompts (4, 5) that return {message, purchaseCategory}. */
+  private async compileAndCallWithCategory(
+    template: string,
+    ctx: Record<string, unknown>,
+    userMessage: string,
+    fallback: { content: string; model: string; totalTokens: number },
+    newProgramName: string | null,
+  ): Promise<IntentRoutingResult> {
+    const result = await this.runPrompt(template, ctx, userMessage, fallback);
+    if (!result) return this.fallbackResult(fallback);
+    const { message, purchaseCategory } = extractMessageAndCategory(result.content);
+    return {
+      content: message,
+      model: result.model,
+      totalTokens: result.totalTokens,
+      newCareerId: null,
+      newMetaData: null,
+      newProgramName,
+      purchaseCategory,
+    };
+  }
+
+  private async runPrompt(
+    template: string,
+    ctx: Record<string, unknown>,
+    userMessage: string,
+    fallback: { content: string; model: string; totalTokens: number },
+  ): Promise<{ content: string; model: string; totalTokens: number } | null> {
     let compiled: { rendered: string; missingVariables: string[] };
     try {
       compiled = this.templateService.compile(template, ctx);
     } catch (err) {
       logger.error('[IntentRouter] Template compilation failed', { error: err });
-      return this.fallbackResult(fallback);
+      return null;
     }
-
     if (compiled.missingVariables.length > 0) {
       logger.warn('[IntentRouter] Missing template variables', { missing: compiled.missingVariables });
     }
-
     const msgs: ChatMessage[] = [
       { role: 'system', content: compiled.rendered },
       { role: 'user', content: userMessage },
     ];
-
-    const result = await this.aiProvider.complete(msgs);
-    return {
-      content: result.content,
-      model: result.model,
-      totalTokens: result.totalTokens,
-      newCareerId: null, // will be overridden in route()
-      newMetaData: null,
-      newProgramName,
-    };
+    return this.aiProvider.complete(msgs);
   }
 
   private fallbackResult(r: { content: string; model: string; totalTokens: number }): IntentRoutingResult {
-    return { ...r, newCareerId: null, newMetaData: null, newProgramName: null };
+    return { ...r, newCareerId: null, newMetaData: null, newProgramName: null, purchaseCategory: null };
   }
 
   private resolveRoutingGroup(

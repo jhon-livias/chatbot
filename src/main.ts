@@ -7,6 +7,8 @@ import { PromptMongoRepository } from './infrastructure/database/mongodb/reposit
 import { FunnelIntentionMongoRepository } from './infrastructure/database/mongodb/repositories/funnel-intention.mongo-repository.js';
 import { ContextSourceDataMongoRepository } from './infrastructure/database/mongodb/repositories/context-source-data.mongo-repository.js';
 import { FacultyMongoRepository } from './infrastructure/database/mongodb/repositories/faculty.mongo-repository.js';
+import { FunnelUserMongoRepository } from './infrastructure/database/mongodb/repositories/funnel-user.mongo-repository.js';
+import { FunnelMessageMongoRepository } from './infrastructure/database/mongodb/repositories/funnel-message.mongo-repository.js';
 import { DeepSeekAdapter } from './infrastructure/ai/deepseek/deepseek.adapter.js';
 import { DeepSeekService } from './infrastructure/ai/deepseek/deepseek.service.js';
 import { loadDeepSeekConfig } from './infrastructure/ai/deepseek/deepseek.config.js';
@@ -37,6 +39,8 @@ async function bootstrap(): Promise<void> {
   const funnelIntentionRepo = new FunnelIntentionMongoRepository();
   const contextSourceRepo = new ContextSourceDataMongoRepository();
   const facultyRepo = new FacultyMongoRepository();
+  const funnelUserRepo = new FunnelUserMongoRepository();
+  const funnelMessageRepo = new FunnelMessageMongoRepository();
 
   const deepSeekConfig = loadDeepSeekConfig();
   const templateService = new TemplateService();
@@ -71,6 +75,8 @@ async function bootstrap(): Promise<void> {
     promptBuilder,
     agentRepo,
     intentRouter,
+    funnelUserRepo,
+    funnelMessageRepo,
   );
 
   const whatsAppParser = new WhatsAppParserService();

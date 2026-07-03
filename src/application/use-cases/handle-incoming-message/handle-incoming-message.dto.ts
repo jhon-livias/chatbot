@@ -1,5 +1,7 @@
 export interface HandleIncomingMessageDto {
   fromPhoneNumber: string;
+  /** WhatsApp profile display name from Meta webhook contacts[].profile.name */
+  profileName?: string;
   externalMessageId: string;
   content: string;
   timestamp: number;

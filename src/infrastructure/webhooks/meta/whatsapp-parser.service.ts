@@ -77,6 +77,7 @@ export class WhatsAppParserService {
 
   private resolveProfileName(contacts: MetaContact[] | undefined, waId: string): string | undefined {
     const contact = contacts?.find((item) => item.wa_id === waId);
-    return contact?.profile.name;
+    const name = contact?.profile.name?.trim();
+    return name || undefined;
   }
 }

@@ -117,7 +117,7 @@ export class HandleIncomingMessageUseCase {
     await this.conversationRepo.save(conversation);
 
     // ── Upsert funnel_users so the admin panel can see this lead ──────────
-    const funnelUserId = await this.upsertFunnelUser(phoneNumber.value);
+    const funnelUserId = await this.upsertFunnelUser(phoneNumber.value, dto.profileName);
 
     // Save the inbound message to funnel_messages
     await this.saveFunnelMessage(funnelUserId, dto.content, 'user');
@@ -287,7 +287,7 @@ export class HandleIncomingMessageUseCase {
     conversation = conversation.addMessage(userMessage);
 
     // Ensure funnel user exists for this phone
-    const funnelUserId = await this.upsertFunnelUser(phoneNumberValue);
+    const funnelUserId = await this.upsertFunnelUser(phoneNumberValue, dto.profileName);
     await this.saveFunnelMessage(funnelUserId, dto.content, 'user');
 
     const isAffirmative = AFFIRMATIVE_PATTERN.test(dto.content.trim());
@@ -400,10 +400,13 @@ export class HandleIncomingMessageUseCase {
 
   // ── Funnel helpers (fire-and-forget; errors logged but never thrown) ─────
 
-  private async upsertFunnelUser(phoneNumber: string): Promise<string> {
+  private async upsertFunnelUser(phoneNumber: string, profileName?: string): Promise<string> {
     if (!this.funnelUserRepo) return '';
     try {
-      return await this.funnelUserRepo.upsert({ senderId: phoneNumber });
+      return await this.funnelUserRepo.upsert({
+        senderId: phoneNumber,
+        ...(profileName !== undefined && { name: profileName }),
+      });
     } catch (err) {
       logger.warn('[HandleIncomingMessage] Failed to upsert funnel_user', {
         error: err instanceof Error ? err.message : String(err),

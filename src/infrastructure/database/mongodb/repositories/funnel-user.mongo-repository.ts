@@ -41,6 +41,11 @@ const CATEGORY_TO_STAGE: Record<string, FunnelUserStage> = {
  * Persists WhatsApp leads in the funnel_users collection so the admin panel can display them.
  */
 export class FunnelUserMongoRepository {
+  /** Strip leading + so admin can display "+{senderId}" without double plus. */
+  private normalizeSenderId(senderId: string): string {
+    return senderId.trim().replace(/^\+/, '');
+  }
+
   /** Upsert a funnel user by senderId (phone number). Returns the id. */
   async upsert(params: {
     senderId: string;
@@ -50,11 +55,16 @@ export class FunnelUserMongoRepository {
     assignedAgent?: string | null;
     sessionPatch?: Record<string, unknown>;
   }): Promise<string> {
-    const existing = await FunnelUserModel.findOne({ senderId: params.senderId }).lean();
+    const senderId = this.normalizeSenderId(params.senderId);
+    const name = params.name?.trim() || undefined;
+
+    const existing = await FunnelUserModel.findOne({
+      $or: [{ senderId }, { senderId: `+${senderId}` }],
+    }).lean();
 
     if (existing) {
-      const update: Partial<LeanFunnelUser> = { updatedAt: new Date() } as Partial<LeanFunnelUser>;
-      if (params.name && !existing.name) update.name = params.name;
+      const update: Partial<LeanFunnelUser> = { updatedAt: new Date(), senderId } as Partial<LeanFunnelUser>;
+      if (name) update.name = name;
       if (params.stage) update.stage = params.stage;
       if (params.userCategory) update.userCategory = params.userCategory;
       if (params.assignedAgent !== undefined) update.assignedAgent = params.assignedAgent;
@@ -67,7 +77,7 @@ export class FunnelUserMongoRepository {
       }
 
       await FunnelUserModel.updateOne(
-        { senderId: params.senderId },
+        { id: existing.id },
         { $set: { ...update, ...sessionUpdate } },
       );
       return existing.id as string;
@@ -79,8 +89,8 @@ export class FunnelUserMongoRepository {
 
     await FunnelUserModel.create({
       id,
-      senderId: params.senderId,
-      name: params.name,
+      senderId,
+      name,
       platform: 'whatsapp',
       showTerms: false,
       stage,

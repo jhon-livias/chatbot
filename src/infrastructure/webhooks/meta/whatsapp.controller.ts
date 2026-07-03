@@ -55,6 +55,7 @@ export class WhatsAppController {
     try {
       await this.handleIncomingMessage.execute({
         fromPhoneNumber: this.toE164(message.waId),
+        ...(message.profileName !== undefined && { profileName: message.profileName }),
         externalMessageId: message.externalMessageId,
         content: message.text,
         timestamp: message.timestampMs,

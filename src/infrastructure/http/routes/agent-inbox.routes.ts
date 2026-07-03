@@ -25,7 +25,7 @@ export function createAgentInboxRouter(
   const returnToBot = new ReturnConversationToBotUseCase(conversationRepo);
   const closeConv = new CloseConversationUseCase(conversationRepo);
 
-  router.use(authenticateAgentJwt);
+  router.use('/api/v1', authenticateAgentJwt);
 
   // GET /api/v1/inbox
   router.get('/api/v1/inbox', async (req: Request, res: Response) => {

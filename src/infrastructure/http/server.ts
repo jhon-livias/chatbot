@@ -44,9 +44,10 @@ export function createServer(
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
   });
 
+  // Webhook first — agentInboxRouter applies JWT globally and must not block Meta POST /webhook
+  app.use(webhookRouter);
   app.use(authRouter);
   app.use(agentInboxRouter);
-  app.use(webhookRouter);
 
   app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
     logger.error('[HTTP] Unhandled error', { error: err.message, stack: err.stack });

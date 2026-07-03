@@ -21,6 +21,7 @@ import type {
 import { formatWhatsAppText } from '../../../infrastructure/webhooks/meta/format-whatsapp-text.js';
 import { logger } from '../../../infrastructure/shared/logger.js';
 import type { Agent } from '../../../domain/entities/agent.entity.js';
+import type { HandoffBy } from '../../../domain/entities/conversation.entity.js';
 
 const CONTEXT_WINDOW_SIZE = 10;
 const MAX_CONSECUTIVE_HANDOFFS = 3;
@@ -32,8 +33,8 @@ const FALLBACK_SYSTEM_PROMPT =
 const HANDOFF_CONFIRMATION_MSG =
   '¿Deseas que te contacte un asesor de admisiones para brindarte información personalizada? (Sí/No)';
 
-const HANDOFF_CONFIRMED_MSG =
-  '¡Perfecto! Un asesor de admisiones se pondrá en contacto contigo muy pronto. 😊 Gracias por tu interés en la UPRIT.';
+const DEFAULT_HANDOFF_TRANSITION_MSG =
+  'Te comunico con {agentName}, asesor de admisiones de la UPRIT. En un momento te atiende.';
 
 const HANDOFF_DECLINED_MSG =
   'Entendido, con gusto seguiré ayudándote. ¿En qué más puedo asistirte?';
@@ -93,8 +94,15 @@ export class HandleIncomingMessageUseCase {
         status: 'active',
         messages: [],
         systemPrompt,
+        mode: 'bot',
         handoffState: 'none',
         consecutiveHandoffs: 0,
+        assignedAgentId: null,
+        handoffAt: null,
+        handoffBy: null,
+        lastUserMessageAt: null,
+        lastAgentMessageAt: null,
+        unreadCountAgent: 0,
         careerId: null,
         metaData: null,
         currentProgramName: null,
@@ -109,7 +117,12 @@ export class HandleIncomingMessageUseCase {
       });
     }
 
-    // ── 3. Handoff pending: user is answering the yes/no confirmation ────
+    // ── 3. Human mode: bot silenced — queue message for assigned agent ───
+    if (conversation.isHumanMode()) {
+      return this.handleHumanModeInbound(conversation, dto, phoneNumber.value);
+    }
+
+    // ── 4. Handoff pending: user is answering the yes/no confirmation ────
     if (conversation.handoffState === 'pending') {
       return this.handlePendingHandoffReply(conversation, dto, phoneNumber.value);
     }
@@ -125,7 +138,9 @@ export class HandleIncomingMessageUseCase {
       timestamp: new Date(dto.timestamp),
     });
 
-    conversation = conversation.addMessage(userMessage);
+    conversation = conversation
+      .addMessage(userMessage)
+      .withLastUserMessageAt(new Date(dto.timestamp));
     await this.conversationRepo.save(conversation);
 
     // ── Upsert funnel_users so the admin panel can see this lead ──────────
@@ -189,37 +204,20 @@ export class HandleIncomingMessageUseCase {
       const newConsecutive = conversation.consecutiveHandoffs + 1;
 
       if (newConsecutive >= MAX_CONSECUTIVE_HANDOFFS) {
-        // Loop detected: trigger handoff immediately without asking
         logger.warn('[HandleIncomingMessage] Loop detected — triggering automatic handoff', {
           phone: phoneNumber.value,
           consecutiveHandoffs: newConsecutive,
         });
 
-        conversation = conversation
-          .incrementHandoffs()
-          .withHandoffState('confirmed')
-          .close();
-        await this.conversationRepo.save(conversation);
-
-        await this.messagingProvider.sendTextMessage({
-          to: phoneNumber.value,
-          body: HANDOFF_LOOP_MSG,
+        const funnelUserId = await this.upsertFunnelUser(phoneNumber.value, dto.profileName);
+        return this.activateHumanHandoff({
+          conversation: conversation.incrementHandoffs(),
+          phoneNumberValue: phoneNumber.value,
+          funnelUserId,
+          handoffBy: 'bot',
+          leadMessage: HANDOFF_LOOP_MSG,
+          userMessage,
         });
-
-        await this.saveFunnelMessage(funnelUserId, HANDOFF_LOOP_MSG, 'bot');
-        await this.updateFunnelUserStage(funnelUserId, 'HANDOFF', null);
-
-        const agent = await this.tryNotifyAgent(conversation, phoneNumber.value);
-        if (agent && funnelUserId) {
-          await this.updateFunnelUserStage(funnelUserId, 'HANDOFF', agent.whatsapp);
-        }
-
-        return {
-          conversationId: conversation.id,
-          userMessageId: userMessage.id.value,
-          aiResponseId: '',
-          aiResponseContent: HANDOFF_LOOP_MSG,
-        };
       }
 
       // Ask the user if they want to be contacted by an advisor
@@ -303,7 +301,9 @@ export class HandleIncomingMessageUseCase {
       timestamp: new Date(dto.timestamp),
     });
 
-    conversation = conversation.addMessage(userMessage);
+    conversation = conversation
+      .addMessage(userMessage)
+      .withLastUserMessageAt(new Date(dto.timestamp));
 
     // Ensure funnel user exists for this phone
     const funnelUserId = await this.upsertFunnelUser(phoneNumberValue, dto.profileName);
@@ -312,27 +312,20 @@ export class HandleIncomingMessageUseCase {
     const isAffirmative = AFFIRMATIVE_PATTERN.test(dto.content.trim());
 
     if (isAffirmative) {
-      conversation = conversation.withHandoffState('confirmed').close();
-      await this.conversationRepo.save(conversation);
+      const agent = await this.pickAgent();
+      const transitionMsg = agent
+        ? this.buildHandoffTransitionMessage(agent.name)
+        : 'Un asesor de admisiones de la UPRIT te atenderá en breve.';
 
-      await this.messagingProvider.sendTextMessage({
-        to: phoneNumberValue,
-        body: HANDOFF_CONFIRMED_MSG,
+      return this.activateHumanHandoff({
+        conversation,
+        phoneNumberValue,
+        funnelUserId,
+        handoffBy: 'user',
+        leadMessage: transitionMsg,
+        userMessage,
+        agent,
       });
-
-      await this.saveFunnelMessage(funnelUserId, HANDOFF_CONFIRMED_MSG, 'bot');
-
-      const agent = await this.tryNotifyAgent(conversation, phoneNumberValue);
-      await this.updateFunnelUserStage(funnelUserId, 'HANDOFF', agent?.whatsapp ?? null);
-
-      logger.info('[HandleIncomingMessage] Handoff confirmed by user', { phone: phoneNumberValue });
-
-      return {
-        conversationId: conversation.id,
-        userMessageId: userMessage.id.value,
-        aiResponseId: '',
-        aiResponseContent: HANDOFF_CONFIRMED_MSG,
-      };
     }
 
     // User declined the advisor offer
@@ -356,28 +349,121 @@ export class HandleIncomingMessageUseCase {
     };
   }
 
+  /** Inbound message while conversation is in human mode — no AI, no auto-reply. */
+  private async handleHumanModeInbound(
+    conversation: Conversation,
+    dto: HandleIncomingMessageDto,
+    phoneNumberValue: string,
+  ): Promise<HandleIncomingMessageResult> {
+    const userMessage = Message.create({
+      id: MessageId.generate(),
+      conversationId: conversation.id,
+      externalId: dto.externalMessageId,
+      role: 'user',
+      content: dto.content,
+      status: 'received',
+      timestamp: new Date(dto.timestamp),
+    });
+
+    conversation = conversation
+      .addMessage(userMessage)
+      .withLastUserMessageAt(new Date(dto.timestamp))
+      .incrementUnread();
+    await this.conversationRepo.save(conversation);
+
+    const funnelUserId = await this.upsertFunnelUser(phoneNumberValue, dto.profileName);
+    await this.saveFunnelMessage(funnelUserId, dto.content, 'user');
+
+    logger.info('[HandleIncomingMessage] Human mode — message queued for agent', {
+      phone: phoneNumberValue,
+      conversationId: conversation.id,
+      assignedAgentId: conversation.assignedAgentId,
+      unreadCount: conversation.unreadCountAgent,
+    });
+
+    return {
+      conversationId: conversation.id,
+      userMessageId: userMessage.id.value,
+      aiResponseId: '',
+      aiResponseContent: '',
+    };
+  }
+
+  private async activateHumanHandoff(params: {
+    conversation: Conversation;
+    phoneNumberValue: string;
+    funnelUserId: string;
+    handoffBy: HandoffBy;
+    leadMessage: string;
+    userMessage: Message;
+    agent?: Agent | null;
+  }): Promise<HandleIncomingMessageResult> {
+    const agent = params.agent ?? await this.pickAgent();
+    let conversation = params.conversation.withHumanHandoff(agent?.id ?? null, params.handoffBy);
+    await this.conversationRepo.save(conversation);
+
+    await this.messagingProvider.sendTextMessage({
+      to: params.phoneNumberValue,
+      body: params.leadMessage,
+    });
+
+    await this.saveFunnelMessage(params.funnelUserId, params.leadMessage, 'bot');
+    await this.updateFunnelUserStage(params.funnelUserId, 'HANDOFF', agent?.id ?? null);
+
+    if (agent) {
+      await this.tryNotifyAgent(conversation, params.phoneNumberValue, agent);
+    }
+
+    logger.info('[HandleIncomingMessage] Human handoff activated', {
+      phone: params.phoneNumberValue,
+      conversationId: conversation.id,
+      assignedAgentId: agent?.id ?? null,
+      handoffBy: params.handoffBy,
+    });
+
+    return {
+      conversationId: conversation.id,
+      userMessageId: params.userMessage.id.value,
+      aiResponseId: '',
+      aiResponseContent: params.leadMessage,
+    };
+  }
+
+  private buildHandoffTransitionMessage(agentName: string): string {
+    const template =
+      process.env['HANDOFF_TRANSITION_MESSAGE'] ?? DEFAULT_HANDOFF_TRANSITION_MSG;
+    return template.replaceAll('{agentName}', agentName);
+  }
+
+  private async pickAgent(): Promise<Agent | null> {
+    if (!this.agentRepo) return null;
+    try {
+      const agents = await this.agentRepo.findActive();
+      if (agents.length === 0) {
+        logger.warn('[HandleIncomingMessage] No active agents found for handoff');
+        return null;
+      }
+      return agents[Math.floor(Math.random() * agents.length)]!;
+    } catch (err) {
+      logger.error('[HandleIncomingMessage] Failed to fetch agents for handoff', { error: err });
+      return null;
+    }
+  }
+
   /** Returns true when the AI response contains a HANDOFF_TRIGGER token anywhere. */
   private detectHandoffTrigger(text: string): boolean {
     // Handle both token formats, whether the model puts them alone or at the end of a sentence
     return /HANDOFF_TRIGGER/.test(text) || /<<HANDOFF_TRIGGER>>/.test(text);
   }
 
-  /** Picks an active agent, sends them a WhatsApp notification, and returns the agent. */
-  private async tryNotifyAgent(conversation: Conversation, leadPhone: string): Promise<Agent | null> {
-    if (!this.agentRepo) return null;
-
-    let agent: Agent | null = null;
-    try {
-      const agents = await this.agentRepo.findActive();
-      if (agents.length === 0) {
-        logger.warn('[HandleIncomingMessage] No active agents found for handoff notification');
-        return null;
-      }
-      agent = agents[Math.floor(Math.random() * agents.length)]!;
-    } catch (err) {
-      logger.error('[HandleIncomingMessage] Failed to fetch agents for handoff', { error: err });
-      return null;
-    }
+  /** Sends a WhatsApp alert to the assigned agent with panel link and conversation summary. */
+  private async tryNotifyAgent(
+    conversation: Conversation,
+    leadPhone: string,
+    agent: Agent,
+  ): Promise<void> {
+    const panelBase = (process.env['ADMISION_PANEL_URL'] ?? 'https://admision.uprit.edu.pe').replace(/\/$/, '');
+    const inboxUrl = `${panelBase}/inbox`;
 
     const lastMessages = conversation.getLastNMessages(5);
     const summary = lastMessages
@@ -389,17 +475,19 @@ export class HandleIncomingMessageUseCase {
       .join('\n');
 
     const notification =
-      `NUEVO LEAD PARA ATENDER\n\n` +
-      `Telefono: ${leadPhone}\n\n` +
-      `Resumen de la conversacion:\n${summary}\n\n` +
-      `El lead ha solicitado ser contactado por un asesor. Por favor comunicate con el a la brevedad.`;
+      `NUEVO CHAT ASIGNADO\n\n` +
+      `Lead: ${leadPhone}\n` +
+      `Conversacion: ${conversation.id}\n\n` +
+      `Resumen:\n${summary}\n\n` +
+      `Atiende desde el panel:\n${inboxUrl}`;
 
     try {
       await this.messagingProvider.sendTextMessage({ to: agent.whatsapp, body: notification });
       logger.info('[HandleIncomingMessage] Agent notified of handoff', {
         agent: agent.name,
-        agentWhatsapp: agent.whatsapp,
+        agentId: agent.id,
         leadPhone,
+        inboxUrl,
       });
     } catch (err) {
       logger.error('[HandleIncomingMessage] Failed to send handoff notification to agent', {
@@ -407,7 +495,6 @@ export class HandleIncomingMessageUseCase {
         error: err instanceof Error ? err.message : String(err),
       });
     }
-    return agent;
   }
 
   // ── Funnel helpers (fire-and-forget; errors logged but never thrown) ─────

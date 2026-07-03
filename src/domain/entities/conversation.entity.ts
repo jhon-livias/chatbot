@@ -2,6 +2,8 @@ import { Message } from './message.entity.js';
 
 export type ConversationStatus = 'active' | 'idle' | 'closed';
 export type HandoffState = 'none' | 'pending' | 'confirmed';
+export type ConversationMode = 'bot' | 'human';
+export type HandoffBy = 'user' | 'bot' | 'agent' | 'system';
 
 export interface ConversationMetaData {
   filterType: string | null;
@@ -15,8 +17,15 @@ export interface ConversationProps {
   status: ConversationStatus;
   messages: Message[];
   systemPrompt?: string;
+  mode: ConversationMode;
   handoffState: HandoffState;
   consecutiveHandoffs: number;
+  assignedAgentId: string | null;
+  handoffAt: Date | null;
+  handoffBy: HandoffBy | null;
+  lastUserMessageAt: Date | null;
+  lastAgentMessageAt: Date | null;
+  unreadCountAgent: number;
   careerId: string | null;
   metaData: ConversationMetaData | null;
   currentProgramName: string | null;
@@ -31,8 +40,15 @@ export class Conversation {
   readonly status: ConversationStatus;
   readonly messages: ReadonlyArray<Message>;
   readonly systemPrompt: string | undefined;
+  readonly mode: ConversationMode;
   readonly handoffState: HandoffState;
   readonly consecutiveHandoffs: number;
+  readonly assignedAgentId: string | null;
+  readonly handoffAt: Date | null;
+  readonly handoffBy: HandoffBy | null;
+  readonly lastUserMessageAt: Date | null;
+  readonly lastAgentMessageAt: Date | null;
+  readonly unreadCountAgent: number;
   readonly careerId: string | null;
   readonly metaData: ConversationMetaData | null;
   readonly currentProgramName: string | null;
@@ -46,8 +62,15 @@ export class Conversation {
     this.status = props.status;
     this.messages = props.messages;
     this.systemPrompt = props.systemPrompt;
+    this.mode = props.mode;
     this.handoffState = props.handoffState;
     this.consecutiveHandoffs = props.consecutiveHandoffs;
+    this.assignedAgentId = props.assignedAgentId;
+    this.handoffAt = props.handoffAt;
+    this.handoffBy = props.handoffBy;
+    this.lastUserMessageAt = props.lastUserMessageAt;
+    this.lastAgentMessageAt = props.lastAgentMessageAt;
+    this.unreadCountAgent = props.unreadCountAgent;
     this.careerId = props.careerId;
     this.metaData = props.metaData;
     this.currentProgramName = props.currentProgramName;
@@ -110,6 +133,64 @@ export class Conversation {
     });
   }
 
+  withHumanHandoff(agentId: string | null, by: HandoffBy): Conversation {
+    return Conversation.create({
+      ...this.toProps(),
+      mode: 'human',
+      assignedAgentId: agentId,
+      handoffAt: new Date(),
+      handoffBy: by,
+      handoffState: 'confirmed',
+      status: 'active',
+      updatedAt: new Date(),
+    });
+  }
+
+  withBotMode(): Conversation {
+    return Conversation.create({
+      ...this.toProps(),
+      mode: 'bot',
+      assignedAgentId: null,
+      handoffAt: null,
+      handoffBy: null,
+      handoffState: 'none',
+      unreadCountAgent: 0,
+      updatedAt: new Date(),
+    });
+  }
+
+  withLastUserMessageAt(at: Date): Conversation {
+    return Conversation.create({
+      ...this.toProps(),
+      lastUserMessageAt: at,
+      updatedAt: new Date(),
+    });
+  }
+
+  incrementUnread(): Conversation {
+    return Conversation.create({
+      ...this.toProps(),
+      unreadCountAgent: this.unreadCountAgent + 1,
+      updatedAt: new Date(),
+    });
+  }
+
+  resetUnread(): Conversation {
+    return Conversation.create({
+      ...this.toProps(),
+      unreadCountAgent: 0,
+      updatedAt: new Date(),
+    });
+  }
+
+  isHumanMode(): boolean {
+    return this.mode === 'human';
+  }
+
+  isBotMode(): boolean {
+    return this.mode === 'bot';
+  }
+
   getLastNMessages(n: number): ReadonlyArray<Message> {
     return this.messages.slice(-n);
   }
@@ -122,8 +203,15 @@ export class Conversation {
       status: this.status,
       messages: [...this.messages],
       ...(this.systemPrompt !== undefined && { systemPrompt: this.systemPrompt }),
+      mode: this.mode,
       handoffState: this.handoffState,
       consecutiveHandoffs: this.consecutiveHandoffs,
+      assignedAgentId: this.assignedAgentId,
+      handoffAt: this.handoffAt,
+      handoffBy: this.handoffBy,
+      lastUserMessageAt: this.lastUserMessageAt,
+      lastAgentMessageAt: this.lastAgentMessageAt,
+      unreadCountAgent: this.unreadCountAgent,
       careerId: this.careerId,
       metaData: this.metaData,
       currentProgramName: this.currentProgramName,

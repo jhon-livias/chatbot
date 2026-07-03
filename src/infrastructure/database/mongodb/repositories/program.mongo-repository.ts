@@ -121,10 +121,10 @@ export class ProgramMongoRepository implements ProgramRepository {
       types: doc.types as [ProgramType, ...ProgramType[]],
       facultyId: doc.facultyId,
       duration: doc.duration,
-      modalities: doc.modalities.map((entry) => ({
+      modalities: (doc.modalities ?? []).map((entry) => ({
         careerType: entry.careerType,
-        modalities: [...entry.modalities] as Modality[],
-      })) as ProgramProps['modalities'],
+        modalities: [...(entry.modalities ?? [])] as Modality[],
+      })),
       academicDegree: doc.academicDegree,
       professionalTitle: doc.professionalTitle,
       brochureUrl: doc.brochureUrl,

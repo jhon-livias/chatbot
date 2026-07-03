@@ -60,6 +60,12 @@ export interface ProgramProps {
   updatedAt: Date;
 }
 
+/** Same as ProgramProps but tolerates missing/incomplete DB fields produced by the admin panel. */
+export type PartialProgramProps = Omit<ProgramProps, 'modalities' | 'iaInformation'> & {
+  modalities: ProgramModalityEntry[];
+  iaInformation?: string;
+};
+
 /**
  * Domain entity representing an academic program offered by the institution.
  */
@@ -142,20 +148,18 @@ export class Program {
     this.updatedAt = props.updatedAt;
   }
 
-  static create(props: ProgramProps): Program {
+  static create(props: PartialProgramProps): Program {
     if (!props.name.trim()) {
       throw new DomainException('Program name cannot be empty');
     }
     if (!props.types.length) {
       throw new DomainException('Program must have at least one type');
     }
-    if (!props.modalities.length) {
-      throw new DomainException('Program must have at least one modality');
-    }
-    if (!props.iaInformation.trim()) {
-      throw new DomainException('iaInformation is required for AI context');
-    }
-    return new Program(props);
+    return new Program({
+      ...props,
+      modalities: (props.modalities ?? []) as [ProgramModalityEntry, ...ProgramModalityEntry[]],
+      iaInformation: props.iaInformation ?? '',
+    });
   }
 
   isActive(): boolean {
@@ -189,7 +193,7 @@ export class Program {
       ...this.toProps(),
       ...partial,
       updatedAt: new Date(),
-    } as ProgramProps);
+    });
   }
 
   toProps(): ProgramProps {

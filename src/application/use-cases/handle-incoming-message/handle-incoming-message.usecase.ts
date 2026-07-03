@@ -503,10 +503,12 @@ export class HandleIncomingMessageUseCase {
       });
       return prompt;
     } catch (err) {
-      logger.warn('[HandleIncomingMessage] Failed to load programs — using fallback prompt', {
+      logger.warn('[HandleIncomingMessage] Failed to load programs — using base prompt without program data', {
         error: err instanceof Error ? err.message : String(err),
       });
-      return FALLBACK_SYSTEM_PROMPT;
+      // Use the safe base instructions (no HANDOFF_TRIGGER for lack of data) rather than
+      // the aggressive fallback that triggers handoff on any insufficient-info scenario.
+      return this.promptBuilder.build([]);
     }
   }
 }

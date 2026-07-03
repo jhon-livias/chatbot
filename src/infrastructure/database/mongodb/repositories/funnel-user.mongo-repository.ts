@@ -128,11 +128,11 @@ export class FunnelUserMongoRepository {
       platform: doc.platform as string,
       stage: doc.stage as FunnelUserStage,
       userCategory: doc.userCategory as UserCategory,
-      assignedAgent: (doc.assignedAgent ?? null) as string | null | undefined,
-      currentFunnelId: (doc.currentFunnelId ?? null) as string | null | undefined,
       session: (doc.session ?? {}) as Record<string, unknown>,
     };
     if (doc.name) result.name = doc.name as string;
+    if (doc.assignedAgent !== undefined) result.assignedAgent = doc.assignedAgent as string | null;
+    if (doc.currentFunnelId !== undefined) result.currentFunnelId = doc.currentFunnelId as string | null;
     return result;
   }
 }

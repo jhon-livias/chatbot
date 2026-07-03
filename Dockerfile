@@ -34,6 +34,24 @@ RUN npm run build
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+#  STAGE 2b — admin-build
+#  Compila el panel React (admin/dist) para servir vía Nginx en el host.
+#  En producción: nginx lee /opt/chatbot-uprit/admin/dist (no va dentro del contenedor app).
+# ═══════════════════════════════════════════════════════════════════════════════
+FROM node:24-alpine AS admin-build
+
+WORKDIR /app/admin
+
+COPY admin/package*.json ./
+RUN npm ci --ignore-scripts
+
+COPY admin/tsconfig*.json admin/vite.config.ts admin/index.html ./
+COPY admin/src ./src
+
+RUN npm run build
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 #  STAGE 3 — production
 #  Imagen final: node:24-alpine + node_modules de prod + dist/ compilado.
 #  No contiene código fuente TypeScript, devDependencies ni el compilador.

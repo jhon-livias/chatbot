@@ -25,7 +25,7 @@ jobs:
           chmod 400 ~/.ssh/deploy.pem
           ssh-keyscan -H "${{ secrets.EC2_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null || true
 
-      - name: Upload production .env
+      - name: Upload production .env (only if absent on server)
         env:
           EC2_HOST: ${{ secrets.EC2_HOST }}
           EC2_USER: ${{ secrets.EC2_USER }}
@@ -38,8 +38,16 @@ jobs:
             printf '%s\n' "${PRODUCTION_ENV}" > production.env
             ssh -i ~/.ssh/deploy.pem -o ConnectTimeout=30 -o StrictHostKeyChecking=no \
               "${EC2_USER}@${EC2_HOST}" "mkdir -p ${REMOTE_DIR}"
-            scp -i ~/.ssh/deploy.pem -o ConnectTimeout=30 -o StrictHostKeyChecking=no \
-              production.env "${EC2_USER}@${EC2_HOST}:${REMOTE_DIR}/.env"
+            # Only upload if .env does NOT already exist — preserves manually-set credentials
+            ENV_EXISTS=$(ssh -i ~/.ssh/deploy.pem -o ConnectTimeout=30 -o StrictHostKeyChecking=no \
+              "${EC2_USER}@${EC2_HOST}" "test -f ${REMOTE_DIR}/.env && echo yes || echo no")
+            if [[ "$ENV_EXISTS" == "no" ]]; then
+              echo "No .env found on server — uploading from PRODUCTION_ENV secret"
+              scp -i ~/.ssh/deploy.pem -o ConnectTimeout=30 -o StrictHostKeyChecking=no \
+                production.env "${EC2_USER}@${EC2_HOST}:${REMOTE_DIR}/.env"
+            else
+              echo ".env already exists on server — skipping upload (manually managed)"
+            fi
           fi
 
       - name: Bootstrap or update server

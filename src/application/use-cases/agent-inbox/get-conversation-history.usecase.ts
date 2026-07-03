@@ -42,9 +42,12 @@ export class GetConversationHistoryUseCase {
 
     assertAgentOwnsConversation(conversation, input.agentId);
 
-    const msgs: ReadonlyArray<Message> = input.limit
-      ? conversation.getLastNMessages(input.limit)
-      : conversation.messages;
+    const msgs: ReadonlyArray<Message> =
+      input.limit !== undefined && input.limit > 0
+        ? conversation.getLastNMessages(input.limit)
+        : input.limit === 0
+          ? []
+          : conversation.messages;
 
     return {
       conversationId: conversation.id,

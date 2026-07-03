@@ -13,6 +13,7 @@ export interface IFunnelMessageDocument {
   platform: string;
   direction: FunnelMessageDirection;
   isAnswered: boolean;
+  agentId?: string;
 }
 
 export type FunnelMessageDocument = HydratedDocument<IFunnelMessageDocument>;
@@ -36,6 +37,7 @@ const funnelMessageSchema = new Schema<IFunnelMessageDocument>(
       required: true,
     },
     isAnswered: { type: Boolean, default: false },
+    agentId: { type: String, default: null, index: true },
   },
   {
     versionKey: false,

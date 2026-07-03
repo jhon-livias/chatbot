@@ -104,17 +104,19 @@ export default function ChatPage() {
 
       <form className="chat-input-bar" onSubmit={handleSend}>
         {sendError && <div className="send-error">{sendError}</div>}
-        <input
-          type="text"
-          placeholder="Escribe un mensaje…"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          disabled={sending}
-          autoFocus
-        />
-        <button type="submit" className="btn btn-primary" disabled={sending || !text.trim()}>
-          {sending ? '…' : 'Enviar'}
-        </button>
+        <div className="chat-input-row">
+          <input
+            type="text"
+            placeholder="Escribe un mensaje…"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            disabled={sending}
+            autoFocus
+          />
+          <button type="submit" className="btn btn-primary" disabled={sending || !text.trim()}>
+            {sending ? '…' : 'Enviar'}
+          </button>
+        </div>
       </form>
     </div>
   )

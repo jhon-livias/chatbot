@@ -12,6 +12,9 @@ fi
 echo "==> git pull"
 git pull --ff-only origin main
 
+echo "==> build backend + admin panel"
+npm run build:all
+
 echo "==> docker compose build app"
 docker compose build app
 
@@ -22,6 +25,12 @@ echo "==> restart apache (if active)"
 if systemctl is-active --quiet apache2; then
   sudo apachectl configtest
   sudo systemctl restart apache2
+fi
+
+echo "==> reload nginx (if active)"
+if systemctl is-active --quiet nginx; then
+  sudo nginx -t
+  sudo systemctl reload nginx
 fi
 
 sleep 3

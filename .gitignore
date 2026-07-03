@@ -4,6 +4,8 @@ node_modules/
 # Compilación
 dist/
 .tsbuildinfo
+admin/dist/
+admin/node_modules/
 
 # Variables de entorno — nunca versionar el .env real
 .env

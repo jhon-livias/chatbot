@@ -33,6 +33,7 @@ services:
 
     ports:
       # Grafana ocupa el puerto 3000 del host — la API se expone en API_PORT
+      # Nginx en el host proxy admision.uprit.edu.pe/api → API_PORT (default 8090)
       - "${API_PORT:-8080}:3000"
 
     networks:

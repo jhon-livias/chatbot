@@ -10,6 +10,9 @@ export interface IAgentDocument {
   whatsapp: string;
   status: AgentStatus;
   userId: string;
+  username: string | null;
+  passwordHash: string | null;
+  lastLoginAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -59,6 +62,23 @@ const agentSchema = new Schema<IAgentDocument>(
       type: String,
       required: [true, 'userId is required'],
       index: true,
+    },
+    username: {
+      type: String,
+      default: null,
+      unique: true,
+      sparse: true,
+      lowercase: true,
+      trim: true,
+      index: true,
+    },
+    passwordHash: {
+      type: String,
+      default: null,
+    },
+    lastLoginAt: {
+      type: Date,
+      default: null,
     },
   },
   {

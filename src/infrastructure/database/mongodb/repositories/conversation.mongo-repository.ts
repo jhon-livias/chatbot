@@ -1,5 +1,11 @@
 import type { ConversationRepository } from '../../../../domain/repositories/conversation.repository.js';
-import { Conversation, type HandoffState, type ConversationMetaData } from '../../../../domain/entities/conversation.entity.js';
+import {
+  Conversation,
+  type HandoffState,
+  type HandoffBy,
+  type ConversationMode,
+  type ConversationMetaData,
+} from '../../../../domain/entities/conversation.entity.js';
 import { ConversationModel } from '../models/conversation.model.js';
 import { MessageModel } from '../models/message.model.js';
 import { Message } from '../../../../domain/entities/message.entity.js';
@@ -30,6 +36,31 @@ export class ConversationMongoRepository implements ConversationRepository {
     );
   }
 
+  async findHumanByAgentId(
+    agentId: string,
+    opts: { limit: number; offset: number },
+  ): Promise<Conversation[]> {
+    const docs = await ConversationModel.find({
+      mode: 'human',
+      status: 'active',
+      assignedAgentId: agentId,
+    })
+      .sort({ updatedAt: -1 })
+      .skip(opts.offset)
+      .limit(opts.limit)
+      .lean();
+
+    return docs.map((doc) => this.toDomain(doc, []));
+  }
+
+  async countHumanByAgentId(agentId: string): Promise<number> {
+    return ConversationModel.countDocuments({
+      mode: 'human',
+      status: 'active',
+      assignedAgentId: agentId,
+    });
+  }
+
   async save(conversation: Conversation): Promise<Conversation> {
     const props = conversation.toProps();
     await ConversationModel.findByIdAndUpdate(
@@ -40,8 +71,15 @@ export class ConversationMongoRepository implements ConversationRepository {
         phoneNumber: props.phoneNumber,
         status: props.status,
         systemPrompt: props.systemPrompt,
+        mode: props.mode,
         handoffState: props.handoffState,
         consecutiveHandoffs: props.consecutiveHandoffs,
+        assignedAgentId: props.assignedAgentId,
+        handoffAt: props.handoffAt,
+        handoffBy: props.handoffBy,
+        lastUserMessageAt: props.lastUserMessageAt,
+        lastAgentMessageAt: props.lastAgentMessageAt,
+        unreadCountAgent: props.unreadCountAgent,
         careerId: props.careerId,
         metaData: props.metaData,
         currentProgramName: props.currentProgramName,
@@ -118,8 +156,15 @@ export class ConversationMongoRepository implements ConversationRepository {
       status: doc['status'] as 'active' | 'idle' | 'closed',
       messages,
       ...(systemPrompt !== undefined && { systemPrompt }),
+      mode: ((doc['mode'] as ConversationMode | undefined) ?? 'bot'),
       handoffState: ((doc['handoffState'] as HandoffState | undefined) ?? 'none'),
       consecutiveHandoffs: ((doc['consecutiveHandoffs'] as number | undefined) ?? 0),
+      assignedAgentId: (doc['assignedAgentId'] as string | null | undefined) ?? null,
+      handoffAt: (doc['handoffAt'] as Date | null | undefined) ?? null,
+      handoffBy: (doc['handoffBy'] as HandoffBy | null | undefined) ?? null,
+      lastUserMessageAt: (doc['lastUserMessageAt'] as Date | null | undefined) ?? null,
+      lastAgentMessageAt: (doc['lastAgentMessageAt'] as Date | null | undefined) ?? null,
+      unreadCountAgent: (doc['unreadCountAgent'] as number | undefined) ?? 0,
       careerId: (doc['careerId'] as string | null | undefined) ?? null,
       metaData: (doc['metaData'] as ConversationMetaData | null | undefined) ?? null,
       currentProgramName: (doc['currentProgramName'] as string | null | undefined) ?? null,

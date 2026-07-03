@@ -7,7 +7,12 @@ export interface ServerOptions {
   corsOrigins: string[];
 }
 
-export function createServer(webhookRouter: Router, options: ServerOptions): Express {
+export function createServer(
+  webhookRouter: Router,
+  authRouter: Router,
+  agentInboxRouter: Router,
+  options: ServerOptions,
+): Express {
   const app = express();
 
   app.use(
@@ -24,8 +29,9 @@ export function createServer(webhookRouter: Router, options: ServerOptions): Exp
     const origin = _req.headers['origin'];
     if (origin && origins.includes(origin)) {
       res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
     }
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
     if (_req.method === 'OPTIONS') {
       res.sendStatus(204);
@@ -38,6 +44,8 @@ export function createServer(webhookRouter: Router, options: ServerOptions): Exp
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
   });
 
+  app.use(authRouter);
+  app.use(agentInboxRouter);
   app.use(webhookRouter);
 
   app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {

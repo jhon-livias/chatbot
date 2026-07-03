@@ -122,16 +122,17 @@ export class FunnelUserMongoRepository {
   }
 
   private toDomain(doc: LeanFunnelUser): FunnelUserData {
-    return {
+    const result: FunnelUserData = {
       id: doc.id as string,
       senderId: doc.senderId as string,
-      name: doc.name as string | undefined,
       platform: doc.platform as string,
       stage: doc.stage as FunnelUserStage,
       userCategory: doc.userCategory as UserCategory,
-      assignedAgent: doc.assignedAgent as string | null | undefined,
-      currentFunnelId: doc.currentFunnelId as string | null | undefined,
+      assignedAgent: (doc.assignedAgent ?? null) as string | null | undefined,
+      currentFunnelId: (doc.currentFunnelId ?? null) as string | null | undefined,
       session: (doc.session ?? {}) as Record<string, unknown>,
     };
+    if (doc.name) result.name = doc.name as string;
+    return result;
   }
 }

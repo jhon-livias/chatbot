@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, type FormEvent } from 'react'
+import { useState, useEffect, type FormEvent } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import { useChatMessages } from '../hooks/useChatMessages'
@@ -11,11 +11,6 @@ export default function ChatPage() {
   const [text, setText] = useState('')
   const [sending, setSending] = useState(false)
   const [sendError, setSendError] = useState('')
-  const bottomRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!loading) bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, loading])
 
   useEffect(() => {
     if (id) {
@@ -99,7 +94,6 @@ export default function ChatPage() {
         {messages.map((m) => (
           <MessageBubble key={m.id} message={m} />
         ))}
-        <div ref={bottomRef} />
       </div>
 
       <form className="chat-input-bar" onSubmit={handleSend}>

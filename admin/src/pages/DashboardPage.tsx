@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, type FormEvent } from 'react'
+import { useState, useEffect, type FormEvent } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { useInbox, type ConversationSummary } from '../hooks/useInbox'
@@ -103,11 +103,6 @@ function ChatPanel({ id, onBack }: { id: string; onBack: () => void }) {
   const [text, setText] = useState('')
   const [sending, setSending] = useState(false)
   const [sendError, setSendError] = useState('')
-  const bottomRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!loading) bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, loading])
 
   useEffect(() => {
     api.post(`/api/v1/conversations/${id}/read`, {}).catch(() => void 0)
@@ -208,7 +203,6 @@ function ChatPanel({ id, onBack }: { id: string; onBack: () => void }) {
             </div>
           )
         })}
-        <div ref={bottomRef} />
       </div>
 
       <form className="dash-input-bar" onSubmit={handleSend}>

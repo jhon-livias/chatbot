@@ -4,6 +4,7 @@ import { api } from '../api/client'
 export interface ConversationSummary {
   id: string
   phoneNumber: string
+  contactName: string | null
   userId: string
   status: string
   mode: string

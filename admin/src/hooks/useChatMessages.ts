@@ -14,6 +14,7 @@ export interface ChatMessage {
 interface ConversationMeta {
   conversationId: string
   phoneNumber: string
+  contactName: string | null
   userId: string
   mode: string
   status: string
@@ -44,6 +45,7 @@ export function useChatMessages(conversationId: string, pollIntervalMs = 4000) {
         setMeta({
           conversationId: data.conversationId,
           phoneNumber: data.phoneNumber,
+          contactName: data.contactName ?? null,
           userId: data.userId,
           mode: data.mode,
           status: data.status,

@@ -90,7 +90,13 @@ async function bootstrap(): Promise<void> {
 
   const webhookRouter = createWebhookRouter(whatsAppController);
   const authRouter = createAuthRouter(agentRepo);
-  const agentInboxRouter = createAgentInboxRouter(conversationRepo, metaAdapter, funnelMessageRepo);
+  const agentInboxRouter = createAgentInboxRouter(
+    conversationRepo,
+    userRepo,
+    funnelUserRepo,
+    metaAdapter,
+    funnelMessageRepo,
+  );
 
   const corsOrigins = [
     ...(process.env['CORS_ORIGINS'] ?? '').split(',').filter(Boolean),

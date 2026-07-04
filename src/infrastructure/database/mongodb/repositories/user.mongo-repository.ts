@@ -32,6 +32,24 @@ export class UserMongoRepository implements UserRepository {
     return doc ? this.toDomain(doc) : null;
   }
 
+  async findNamesByIds(ids: string[]): Promise<Map<string, string>> {
+    if (ids.length === 0) return new Map();
+
+    const docs = await UserModel.find({
+      _id: { $in: ids },
+      name: { $exists: true, $nin: [null, ''] },
+    })
+      .select('_id name')
+      .lean();
+
+    const map = new Map<string, string>();
+    for (const doc of docs) {
+      const name = String(doc['name'] ?? '').trim();
+      if (name) map.set(String(doc['_id']), name);
+    }
+    return map;
+  }
+
   async save(user: User): Promise<User> {
     const props = user.toProps();
     await UserModel.findByIdAndUpdate(

@@ -1,6 +1,8 @@
 import type { ConversationRepository } from '../../../domain/repositories/conversation.repository.js';
+import type { UserRepository } from '../../../domain/repositories/user.repository.js';
 import { assertAgentOwnsConversation, ForbiddenError } from '../../services/conversation-access.service.js';
 import type { Message } from '../../../domain/entities/message.entity.js';
+import type { FunnelUserMongoRepository } from '../../../infrastructure/database/mongodb/repositories/funnel-user.mongo-repository.js';
 
 export { ForbiddenError };
 
@@ -23,6 +25,7 @@ export interface MessageDto {
 export interface GetConversationHistoryOutput {
   conversationId: string;
   phoneNumber: string;
+  contactName: string | null;
   userId: string;
   mode: string;
   status: string;
@@ -32,7 +35,11 @@ export interface GetConversationHistoryOutput {
 }
 
 export class GetConversationHistoryUseCase {
-  constructor(private readonly conversationRepo: ConversationRepository) {}
+  constructor(
+    private readonly conversationRepo: ConversationRepository,
+    private readonly userRepo: UserRepository,
+    private readonly funnelUserRepo: FunnelUserMongoRepository,
+  ) {}
 
   async execute(input: GetConversationHistoryInput): Promise<GetConversationHistoryOutput> {
     const conversation = await this.conversationRepo.findById(input.conversationId);
@@ -49,9 +56,16 @@ export class GetConversationHistoryUseCase {
           ? []
           : conversation.messages;
 
+    const [funnelUser, user] = await Promise.all([
+      this.funnelUserRepo.findBySenderId(conversation.phoneNumber),
+      this.userRepo.findById(conversation.userId),
+    ]);
+    const contactName = funnelUser?.name ?? user?.name ?? null;
+
     return {
       conversationId: conversation.id,
       phoneNumber: conversation.phoneNumber,
+      contactName,
       userId: conversation.userId,
       mode: conversation.mode,
       status: conversation.status,

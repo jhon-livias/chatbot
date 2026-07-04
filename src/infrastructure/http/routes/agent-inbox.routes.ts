@@ -10,16 +10,20 @@ import { ForbiddenError } from '../../../application/services/conversation-acces
 import type { ConversationRepository } from '../../../domain/repositories/conversation.repository.js';
 import type { MessagingProviderPort } from '../../../application/ports/messaging-provider.port.js';
 import type { FunnelMessageMongoRepository } from '../../database/mongodb/repositories/funnel-message.mongo-repository.js';
+import type { UserMongoRepository } from '../../database/mongodb/repositories/user.mongo-repository.js';
+import type { FunnelUserMongoRepository } from '../../database/mongodb/repositories/funnel-user.mongo-repository.js';
 
 export function createAgentInboxRouter(
   conversationRepo: ConversationRepository,
+  userRepo: UserMongoRepository,
+  funnelUserRepo: FunnelUserMongoRepository,
   messagingProvider: MessagingProviderPort,
   funnelMessageRepo: FunnelMessageMongoRepository,
 ): Router {
   const router = Router();
 
-  const listInbox = new ListAgentInboxUseCase(conversationRepo);
-  const getHistory = new GetConversationHistoryUseCase(conversationRepo);
+  const listInbox = new ListAgentInboxUseCase(conversationRepo, userRepo, funnelUserRepo);
+  const getHistory = new GetConversationHistoryUseCase(conversationRepo, userRepo, funnelUserRepo);
   const sendMessage = new SendAgentMessageUseCase(conversationRepo, messagingProvider, funnelMessageRepo);
   const markRead = new MarkConversationReadUseCase(conversationRepo);
   const returnToBot = new ReturnConversationToBotUseCase(conversationRepo);

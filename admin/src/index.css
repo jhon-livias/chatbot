@@ -314,7 +314,7 @@ body { min-height: 100dvh; }
 }
 .dash-conv-item:hover { background: var(--dash-hover); }
 .dash-conv-item--active { background: var(--dash-active); }
-.dash-conv-item--unread .dash-conv-phone { font-weight: 700; }
+.dash-conv-item--unread .dash-conv-name { font-weight: 700; }
 
 /* Avatar */
 .dash-avatar {
@@ -338,13 +338,17 @@ body { min-height: 100dvh; }
   display: flex; justify-content: space-between; align-items: baseline;
   gap: .4rem;
 }
+.dash-conv-name {
+  font-size: .875rem; font-weight: 600; color: var(--dash-text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .dash-conv-phone {
-  font-size: .85rem; font-weight: 500; color: var(--dash-text);
+  font-size: .78rem; font-weight: 400; color: var(--dash-muted);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .dash-conv-time { font-size: .72rem; color: var(--dash-muted); flex-shrink: 0; }
 .dash-conv-preview {
-  font-size: .78rem; color: var(--dash-muted);
+  font-size: .75rem; color: var(--dash-muted);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .dash-badge {

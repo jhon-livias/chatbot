@@ -122,9 +122,39 @@ export class FunnelUserMongoRepository {
   }
 
   async findBySenderId(senderId: string): Promise<FunnelUserData | null> {
-    const doc = await FunnelUserModel.findOne({ senderId }).lean();
+    const normalized = this.normalizeSenderId(senderId);
+    const doc = await FunnelUserModel.findOne({
+      $or: [{ senderId: normalized }, { senderId: `+${normalized}` }],
+    }).lean();
     if (!doc) return null;
     return this.toDomain(doc as LeanFunnelUser);
+  }
+
+  /** Batch lookup display names keyed by normalized phone (no leading +). */
+  async findNamesBySenderIds(senderIds: string[]): Promise<Map<string, string>> {
+    if (senderIds.length === 0) return new Map();
+
+    const variants = new Set<string>();
+    for (const id of senderIds) {
+      const normalized = this.normalizeSenderId(id);
+      variants.add(normalized);
+      variants.add(`+${normalized}`);
+    }
+
+    const docs = await FunnelUserModel.find({
+      senderId: { $in: [...variants] },
+      name: { $exists: true, $nin: [null, ''] },
+    })
+      .select('senderId name')
+      .lean();
+
+    const map = new Map<string, string>();
+    for (const doc of docs) {
+      const key = this.normalizeSenderId(String(doc.senderId));
+      const name = String(doc.name ?? '').trim();
+      if (name) map.set(key, name);
+    }
+    return map;
   }
 
   async stageFromCategory(purchaseCategory: string): Promise<FunnelUserStage> {

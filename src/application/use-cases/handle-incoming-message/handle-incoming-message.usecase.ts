@@ -74,11 +74,15 @@ export class HandleIncomingMessageUseCase {
       user = User.create({
         id: randomUUID(),
         phoneNumber,
+        ...(dto.profileName !== undefined && { name: dto.profileName }),
         createdAt: new Date(),
         updatedAt: new Date(),
       });
       user = await this.userRepo.save(user);
       logger.info('[HandleIncomingMessage] New user created', { phone: phoneNumber.value });
+    } else if (dto.profileName && !user.name) {
+      user = user.updateName(dto.profileName);
+      user = await this.userRepo.save(user);
     }
 
     // ── 2. Upsert conversation — persist to DB immediately so context is never lost ──

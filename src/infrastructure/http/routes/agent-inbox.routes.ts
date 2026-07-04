@@ -12,6 +12,20 @@ import type { MessagingProviderPort } from '../../../application/ports/messaging
 import type { FunnelMessageMongoRepository } from '../../database/mongodb/repositories/funnel-message.mongo-repository.js';
 import type { UserMongoRepository } from '../../database/mongodb/repositories/user.mongo-repository.js';
 import type { FunnelUserMongoRepository } from '../../database/mongodb/repositories/funnel-user.mongo-repository.js';
+import { logAgentAuditFromRequest, type AgentAuditFields } from '../../shared/agent-audit.logger.js';
+
+async function auditConversationAction(
+  conversationRepo: ConversationRepository,
+  req: Request,
+  conversationId: string,
+  action: 'message_sent' | 'return_to_bot' | 'conversation_closed' | 'access_denied',
+  extra?: { contentPreview?: string; detail?: string },
+): Promise<void> {
+  const conversation = await conversationRepo.findById(conversationId);
+  const auditExtra: Omit<AgentAuditFields, 'action'> = { conversationId, ...extra };
+  if (conversation?.phoneNumber) auditExtra.phoneNumber = conversation.phoneNumber;
+  logAgentAuditFromRequest(req, action, auditExtra);
+}
 
 export function createAgentInboxRouter(
   conversationRepo: ConversationRepository,
@@ -51,6 +65,9 @@ export function createAgentInboxRouter(
       res.json({ ...result, messages: undefined });
     } catch (err) {
       if (err instanceof ForbiddenError) {
+        await auditConversationAction(conversationRepo, req, conversationId, 'access_denied', {
+          detail: err.message,
+        });
         res.status(403).json({ error: err.message });
         return;
       }
@@ -73,6 +90,9 @@ export function createAgentInboxRouter(
       res.json(result);
     } catch (err) {
       if (err instanceof ForbiddenError) {
+        await auditConversationAction(conversationRepo, req, conversationId, 'access_denied', {
+          detail: err.message,
+        });
         res.status(403).json({ error: err.message });
         return;
       }
@@ -97,9 +117,15 @@ export function createAgentInboxRouter(
 
     try {
       const result = await sendMessage.execute({ conversationId, agentId, content });
+      await auditConversationAction(conversationRepo, req, conversationId, 'message_sent', {
+        contentPreview: content.trim().slice(0, 120),
+      });
       res.status(201).json(result);
     } catch (err) {
       if (err instanceof ForbiddenError) {
+        await auditConversationAction(conversationRepo, req, conversationId, 'access_denied', {
+          detail: err.message,
+        });
         res.status(403).json({ error: err.message });
         return;
       }
@@ -121,6 +147,9 @@ export function createAgentInboxRouter(
       res.json({ success: true });
     } catch (err) {
       if (err instanceof ForbiddenError) {
+        await auditConversationAction(conversationRepo, req, conversationId, 'access_denied', {
+          detail: err.message,
+        });
         res.status(403).json({ error: err.message });
         return;
       }
@@ -135,9 +164,13 @@ export function createAgentInboxRouter(
 
     try {
       await returnToBot.execute({ conversationId, agentId });
+      await auditConversationAction(conversationRepo, req, conversationId, 'return_to_bot');
       res.json({ success: true, mode: 'bot' });
     } catch (err) {
       if (err instanceof ForbiddenError) {
+        await auditConversationAction(conversationRepo, req, conversationId, 'access_denied', {
+          detail: err.message,
+        });
         res.status(403).json({ error: err.message });
         return;
       }
@@ -152,9 +185,13 @@ export function createAgentInboxRouter(
 
     try {
       await closeConv.execute({ conversationId, agentId });
+      await auditConversationAction(conversationRepo, req, conversationId, 'conversation_closed');
       res.json({ success: true, status: 'closed' });
     } catch (err) {
       if (err instanceof ForbiddenError) {
+        await auditConversationAction(conversationRepo, req, conversationId, 'access_denied', {
+          detail: err.message,
+        });
         res.status(403).json({ error: err.message });
         return;
       }

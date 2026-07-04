@@ -34,7 +34,7 @@ scrape_configs:
         target_label: service
 
     pipeline_stages:
-      # Parsea logs JSON emitidos por Pino (level, msg, time, service, etc.)
+      # Parsea logs JSON emitidos por Pino (level, msg, time, service, audit, etc.)
       - json:
           expressions:
             level: level
@@ -42,15 +42,17 @@ scrape_configs:
             time: time
             service: service
             env: env
+            logType: logType
+            action: action
       - labels:
           level:
           service:
           env:
+          logType:
+          action:
       - timestamp:
           source: time
           format: RFC3339Nano
-      - output:
-          source: msg
 
   # ── Logs del propio stack de observabilidad ────────────────────────────────
   - job_name: observability-stack

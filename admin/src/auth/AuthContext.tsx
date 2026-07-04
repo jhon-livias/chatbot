@@ -42,6 +42,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const logout = useCallback(() => {
+    const token = localStorage.getItem('uprit_agent_token')
+    if (token) {
+      void fetch(`${(import.meta.env.VITE_API_BASE_URL as string | undefined) ?? ''}/api/v1/auth/logout`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      }).catch(() => void 0)
+    }
     localStorage.removeItem('uprit_agent_token')
     localStorage.removeItem('uprit_agent_info')
     setState({ token: null, agent: null })

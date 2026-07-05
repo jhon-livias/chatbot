@@ -1,11 +1,15 @@
-import { useState, useEffect, useMemo, type FormEvent } from 'react'
+import { useState, useEffect, useMemo, useRef, type FormEvent } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { useInbox, type AgentInboxFilter, type ConversationSummary } from '../hooks/useInbox'
 import { useChatMessages } from '../hooks/useChatMessages'
+import { useTypingEmitter, useTypingIndicator } from '../hooks/useTypingIndicator'
+import { useMessageNotifications } from '../hooks/useMessageNotifications'
 import { api } from '../api/client'
 import MessageBubble from '../components/MessageBubble'
 import ConnectionBanner from '../components/ConnectionBanner'
+import TypingIndicator from '../components/TypingIndicator'
+import SoundToggle from '../components/SoundToggle'
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -97,11 +101,12 @@ function ConvItem({
         </div>
         <div className="dash-conv-row">
           <span className="dash-conv-preview">
-            {conv.mode === 'human'
-              ? showAssignedAgent && conv.assignedAgentName
-                ? `Asignado: ${conv.assignedAgentName}`
-                : 'En atención'
-              : 'En bot'}
+            {conv.lastMessagePreview ??
+              (conv.mode === 'human'
+                ? showAssignedAgent && conv.assignedAgentName
+                  ? `Asignado: ${conv.assignedAgentName}`
+                  : 'En atención'
+                : 'En bot')}
           </span>
           {hasUnread && (
             <span className="dash-badge">{conv.unreadCountAgent}</span>
@@ -127,14 +132,29 @@ function ChatPanel({
   botPreview?: boolean
   onTakeSuccess?: () => void
 }) {
-  const { messages, meta, loading, error, forbidden, reload } = useChatMessages(id)
+  const { agent } = useAuth()
+  const {
+    messages,
+    meta,
+    loading,
+    error,
+    forbidden,
+    reload,
+    addOptimisticMessage,
+    markOptimisticFailed,
+  } = useChatMessages(id)
   const [text, setText] = useState('')
   const [sending, setSending] = useState(false)
   const [sendError, setSendError] = useState('')
   const [taking, setTaking] = useState(false)
+  const messagesRef = useRef<HTMLDivElement>(null)
+  const nearBottomRef = useRef(true)
 
   const isBotPreview = botPreview === true && meta?.mode === 'bot'
   const canReply = !readOnly && !isBotPreview
+
+  useTypingEmitter(id, text, canReply)
+  const typingAgent = useTypingIndicator(id)
 
   useEffect(() => {
     if (id && canReply) {
@@ -142,17 +162,37 @@ function ChatPanel({
     }
   }, [id, canReply])
 
+  useEffect(() => {
+    const el = messagesRef.current
+    if (!el) return
+    if (nearBottomRef.current || loading) {
+      el.scrollTop = el.scrollHeight
+    }
+  }, [messages, loading, typingAgent])
+
+  function handleMessagesScroll() {
+    const el = messagesRef.current
+    if (!el) return
+    nearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 150
+  }
+
   async function handleSend(e: FormEvent) {
     e.preventDefault()
-    if (!text.trim()) return
+    const content = text.trim()
+    if (!content || !agent) return
     setSendError('')
+
+    const optimisticId = addOptimisticMessage(content, agent.id)
+    setText('')
     setSending(true)
+    nearBottomRef.current = true
+
     try {
-      await api.post(`/api/v1/conversations/${id}/messages`, { content: text.trim() })
-      setText('')
-      reload()
+      await api.post(`/api/v1/conversations/${id}/messages`, { content })
     } catch (err) {
+      markOptimisticFailed(optimisticId)
       setSendError(err instanceof Error ? err.message : 'Error al enviar')
+      setText(content)
     } finally {
       setSending(false)
     }
@@ -234,7 +274,7 @@ function ChatPanel({
         )}
       </header>
 
-      <div className="dash-messages">
+      <div className="dash-messages" ref={messagesRef} onScroll={handleMessagesScroll}>
         {loading && messages.length === 0 && (
           <div className="dash-chat-empty" style={{ flex: 1 }}>
             <span className="spinner" />
@@ -246,6 +286,7 @@ function ChatPanel({
         {messages.map((m) => (
           <MessageBubble key={m.id} message={m} />
         ))}
+        <TypingIndicator label={typingAgent} />
       </div>
 
       {!canReply && isBotPreview && (
@@ -311,6 +352,12 @@ export default function DashboardPage() {
 
   const hasChatOpen = Boolean(id)
 
+  useMessageNotifications({
+    activeConversationId: id,
+    readOnly: isAdmin,
+    agentId: agent?.id,
+  })
+
   function handleTakeSuccess() {
     setAgentFilter('own')
     reloadInbox()
@@ -350,6 +397,7 @@ export default function DashboardPage() {
               {agent?.name}
               {isAdmin && <span style={{ opacity: 0.7, fontSize: '.75rem' }}> · Admin</span>}
             </span>
+            <SoundToggle />
             <button className="dash-logout-btn" onClick={logout} title="Cerrar sesión">
               <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
                 <path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/>

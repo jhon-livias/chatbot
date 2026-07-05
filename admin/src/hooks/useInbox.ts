@@ -17,6 +17,7 @@ export interface ConversationSummary {
   lastAgentMessageAt: string | null
   updatedAt: string
   createdAt: string
+  lastMessagePreview?: string
 }
 
 interface InboxResponse {
@@ -105,9 +106,14 @@ export function useInbox(options: UseInboxOptions = {}) {
           const conv = prev[idx]!
           const isActive = event.conversationId === activeConversationId
           const isUserMsg = event.message.role === 'user'
+          const preview =
+            event.message.content.length > 40
+              ? `${event.message.content.slice(0, 40)}…`
+              : event.message.content
           const updated: ConversationSummary = {
             ...conv,
             updatedAt: event.message.timestamp,
+            lastMessagePreview: preview,
             ...(isUserMsg && { lastUserMessageAt: event.message.timestamp }),
             ...(!isUserMsg && { lastAgentMessageAt: event.message.timestamp }),
             unreadCountAgent:

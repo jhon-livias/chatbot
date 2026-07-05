@@ -23,11 +23,17 @@ const WS_PATH = '/api/v1/ws';
  * | `message.new`       | `{ conversationId, message: MessageEventData }` |
  * | `message.status`    | `{ conversationId, messageId, status, deliveredAt?, readAt? }` |
  * | `conversation.read` | `{ conversationId, unreadCountAgent }` |
+ * | `typing.start`      | `{ conversationId, agentId, agentName }` |
+ * | `typing.stop`       | `{ conversationId, agentId }` |
  *
  * ## Client → Server events
- * | type   | payload |
- * |--------|---------|
- * | `ping` | `{}` — client heartbeat; server replies `pong` |
+ * | type           | payload |
+ * |----------------|---------|
+ * | `ping`         | `{}` |
+ * | `typing.start` | `{ conversationId }` |
+ * | `typing.stop`  | `{ conversationId }` |
+ *
+ * Note: Meta Cloud API does not send inbound lead typing via standard webhooks.
  *
  * ## Fan-out rules
  * - `mode=bot`:   broadcast to all connected sockets.
@@ -61,7 +67,16 @@ type InfraOutboundEvent =
   | { type: 'pong' }
   | { type: 'ping' };
 
-type AnyOutboundEvent = InfraOutboundEvent | RealtimeEvent;
+type TypingOutboundEvent =
+  | { type: 'typing.start'; conversationId: string; agentId: string; agentName: string }
+  | { type: 'typing.stop'; conversationId: string; agentId: string };
+
+type AnyOutboundEvent = InfraOutboundEvent | RealtimeEvent | TypingOutboundEvent;
+
+interface ClientInboundMessage {
+  type?: string;
+  conversationId?: string;
+}
 
 export class WebSocketRealtimeAdapter implements RealtimePort {
   private wss: WebSocketServer | null = null;
@@ -264,13 +279,53 @@ export class WebSocketRealtimeAdapter implements RealtimePort {
   }
 
   private handleClientMessage(ws: WebSocket, data: WebSocket.RawData): void {
-    let parsed: { type?: string };
+    let parsed: ClientInboundMessage;
     try {
-      parsed = JSON.parse(String(data)) as { type?: string };
+      parsed = JSON.parse(String(data)) as ClientInboundMessage;
     } catch {
       return;
     }
-    if (parsed.type === 'ping') this.send(ws, { type: 'pong' });
+
+    if (parsed.type === 'ping') {
+      this.send(ws, { type: 'pong' });
+      return;
+    }
+
+    if (
+      (parsed.type === 'typing.start' || parsed.type === 'typing.stop') &&
+      typeof parsed.conversationId === 'string' &&
+      parsed.conversationId.trim()
+    ) {
+      this.relayTyping(ws, parsed.type, parsed.conversationId.trim());
+    }
+  }
+
+  /** Retransmit typing events to all other connected agents (same conversationId filter on client). */
+  private relayTyping(
+    senderWs: WebSocket,
+    kind: 'typing.start' | 'typing.stop',
+    conversationId: string,
+  ): void {
+    const sender = this.clientStates.get(senderWs);
+    if (!sender) return;
+
+    const event: TypingOutboundEvent =
+      kind === 'typing.start'
+        ? {
+            type: 'typing.start',
+            conversationId,
+            agentId: sender.agentId,
+            agentName: sender.name,
+          }
+        : { type: 'typing.stop', conversationId, agentId: sender.agentId };
+
+    const payload = JSON.stringify(event);
+    for (const sockets of this.connections.values()) {
+      for (const ws of sockets) {
+        if (ws === senderWs) continue;
+        this.sendRaw(ws, payload);
+      }
+    }
   }
 
   private runHeartbeat(): void {

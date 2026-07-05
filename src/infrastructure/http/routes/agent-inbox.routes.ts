@@ -120,9 +120,20 @@ export function createAgentInboxRouter(
     const agentId = req.agent!.id;
     const conversationId = String(req.params['id']);
     const limit = req.query['limit'] ? Number(req.query['limit']) : undefined;
+    const sinceRaw = req.query['since'];
+    const since =
+      typeof sinceRaw === 'string' && sinceRaw.trim()
+        ? new Date(sinceRaw)
+        : undefined;
 
     try {
-      const result = await getHistory.execute({ conversationId, agentId, role: req.agent!.role, limit });
+      const result = await getHistory.execute({
+        conversationId,
+        agentId,
+        role: req.agent!.role,
+        limit,
+        ...(since !== undefined && !Number.isNaN(since.getTime()) && { since }),
+      });
       res.json(result);
     } catch (err) {
       if (err instanceof ForbiddenError) {

@@ -16,6 +16,8 @@ export interface GetConversationHistoryInput {
   agentId: string;
   role?: AgentRole;
   limit?: number | undefined;
+  /** Return only messages with timestamp strictly after this date (delta sync). */
+  since?: Date;
 }
 
 export interface MessageDto {
@@ -59,12 +61,16 @@ export class GetConversationHistoryUseCase {
 
     assertCanViewConversation(conversation, input.agentId, input.role ?? 'agent');
 
-    const msgs: ReadonlyArray<Message> =
+    let msgs: ReadonlyArray<Message> =
       input.limit !== undefined && input.limit > 0
         ? conversation.getLastNMessages(input.limit)
         : input.limit === 0
           ? []
           : conversation.messages;
+
+    if (input.since) {
+      msgs = msgs.filter((m) => m.timestamp > input.since!);
+    }
 
     const [funnelUser, user, assignedAgent] = await Promise.all([
       this.funnelUserRepo.findBySenderId(conversation.phoneNumber),

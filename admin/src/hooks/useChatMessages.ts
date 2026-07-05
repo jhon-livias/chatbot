@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { api } from '../api/client'
 import { useRealtime } from '../context/RealtimeContext'
 import type { MessageEventData } from '../types/realtime'
@@ -48,18 +48,27 @@ function toChatMessage(data: MessageEventData): ChatMessage {
 }
 
 function mergeMessages(existing: ChatMessage[], incoming: ChatMessage): ChatMessage[] {
-  const idx = existing.findIndex((m) => m.id === incoming.id)
+  const withoutOptimistic = existing.filter(
+    (m) =>
+      !(
+        m.id.startsWith('optimistic-') &&
+        m.content === incoming.content &&
+        m.role === incoming.role
+      ),
+  )
+  const idx = withoutOptimistic.findIndex((m) => m.id === incoming.id)
   if (idx >= 0) {
-    const next = [...existing]
+    const next = [...withoutOptimistic]
     next[idx] = { ...next[idx], ...incoming }
     return next
   }
-  return [...existing, incoming]
+  return [...withoutOptimistic, incoming]
 }
 
 export function useChatMessages(conversationId: string) {
   const { connectionState, subscribe } = useRealtime()
   const wsConnected = connectionState === 'connected'
+  const lastSyncRef = useRef<string | null>(null)
 
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [meta, setMeta] = useState<ConversationMeta | null>(null)
@@ -68,25 +77,53 @@ export function useChatMessages(conversationId: string) {
   const [forbidden, setForbidden] = useState(false)
 
   const fetch = useCallback(
-    async (initial = false) => {
+    async (initial = false, delta = false) => {
       if (!conversationId) return
       if (initial) setLoading(true)
       try {
-        const data = await api.get<HistoryResponse>(
-          `/api/v1/conversations/${conversationId}/messages`,
-        )
-        setMessages(data.messages)
-        setMeta({
-          conversationId: data.conversationId,
-          phoneNumber: data.phoneNumber,
-          contactName: data.contactName ?? null,
-          userId: data.userId,
-          mode: data.mode,
-          status: data.status,
-          assignedAgentId: data.assignedAgentId,
-          assignedAgentName: data.assignedAgentName ?? null,
-          unreadCountAgent: data.unreadCountAgent,
-        })
+        const since = delta && lastSyncRef.current ? lastSyncRef.current : null
+        const path = since
+          ? `/api/v1/conversations/${conversationId}/messages?since=${encodeURIComponent(since)}`
+          : `/api/v1/conversations/${conversationId}/messages`
+
+        const data = await api.get<HistoryResponse>(path)
+
+        if (delta && since) {
+          if (data.messages.length > 0) {
+            setMessages((prev) => {
+              let next = prev
+              for (const msg of data.messages) {
+                next = mergeMessages(next, msg)
+              }
+              return next
+            })
+          }
+        } else {
+          setMessages(data.messages)
+        }
+
+        if (!delta || !since) {
+          setMeta({
+            conversationId: data.conversationId,
+            phoneNumber: data.phoneNumber,
+            contactName: data.contactName ?? null,
+            userId: data.userId,
+            mode: data.mode,
+            status: data.status,
+            assignedAgentId: data.assignedAgentId,
+            assignedAgentName: data.assignedAgentName ?? null,
+            unreadCountAgent: data.unreadCountAgent,
+          })
+        }
+
+        const latest = data.messages.length > 0
+          ? data.messages[data.messages.length - 1]!.timestamp
+          : null
+        if (latest) lastSyncRef.current = latest
+        else if (!delta && data.messages.length === 0) {
+          lastSyncRef.current = new Date().toISOString()
+        }
+
         setError('')
         setForbidden(false)
       } catch (err) {
@@ -104,12 +141,13 @@ export function useChatMessages(conversationId: string) {
   )
 
   useEffect(() => {
-    void fetch(true)
+    lastSyncRef.current = null
+    void fetch(true, false)
   }, [fetch])
 
   useEffect(() => {
     if (wsConnected) return
-    const id = setInterval(() => void fetch(false), FALLBACK_POLL_MS)
+    const id = setInterval(() => void fetch(false, true), FALLBACK_POLL_MS)
     return () => clearInterval(id)
   }, [fetch, wsConnected])
 
@@ -120,6 +158,7 @@ export function useChatMessages(conversationId: string) {
       if (event.type === 'message.new') {
         const msg = toChatMessage(event.message)
         setMessages((prev) => mergeMessages(prev, msg))
+        lastSyncRef.current = msg.timestamp
       }
 
       if (event.type === 'message.status') {
@@ -145,5 +184,42 @@ export function useChatMessages(conversationId: string) {
     })
   }, [conversationId, subscribe])
 
-  return { messages, meta, loading, error, forbidden, reload: () => void fetch(false) }
+  const addOptimisticMessage = useCallback(
+    (content: string, agentId: string): string => {
+      const id = `optimistic-${Date.now()}`
+      const msg: ChatMessage = {
+        id,
+        role: 'agent',
+        content,
+        status: 'processing',
+        timestamp: new Date().toISOString(),
+        metadata: { agentId, optimistic: true },
+      }
+      setMessages((prev) => [...prev, msg])
+      return id
+    },
+    [],
+  )
+
+  const markOptimisticFailed = useCallback((optimisticId: string) => {
+    setMessages((prev) =>
+      prev.map((m) => (m.id === optimisticId ? { ...m, status: 'failed' } : m)),
+    )
+  }, [])
+
+  const removeOptimisticMessage = useCallback((optimisticId: string) => {
+    setMessages((prev) => prev.filter((m) => m.id !== optimisticId))
+  }, [])
+
+  return {
+    messages,
+    meta,
+    loading,
+    error,
+    forbidden,
+    reload: () => void fetch(false, false),
+    addOptimisticMessage,
+    markOptimisticFailed,
+    removeOptimisticMessage,
+  }
 }

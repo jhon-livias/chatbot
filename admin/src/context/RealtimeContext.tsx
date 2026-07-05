@@ -12,6 +12,7 @@ import type {
   ConnectionState,
   RealtimeEvent,
   RealtimeEventHandler,
+  RealtimeClientEvent,
 } from '../types/realtime'
 
 interface RealtimeContextValue {
@@ -19,6 +20,7 @@ interface RealtimeContextValue {
   lastSyncAt: Date | null
   reconnect: () => void
   subscribe: (handler: RealtimeEventHandler) => () => void
+  send: (event: RealtimeClientEvent) => void
 }
 
 const RealtimeContext = createContext<RealtimeContextValue | null>(null)
@@ -32,7 +34,9 @@ function parseEvent(data: string): RealtimeEvent | null {
     if (
       parsed.type === 'message.new' ||
       parsed.type === 'message.status' ||
-      parsed.type === 'conversation.read'
+      parsed.type === 'conversation.read' ||
+      parsed.type === 'typing.start' ||
+      parsed.type === 'typing.stop'
     ) {
       return parsed as RealtimeEvent
     }
@@ -148,6 +152,12 @@ export function RealtimeProvider({
     connect()
   }, [connect])
 
+  const send = useCallback((event: RealtimeClientEvent) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify(event))
+    }
+  }, [])
+
   useEffect(() => {
     connect()
     return () => {
@@ -160,7 +170,7 @@ export function RealtimeProvider({
 
   return (
     <RealtimeContext.Provider
-      value={{ connectionState, lastSyncAt, reconnect, subscribe }}
+      value={{ connectionState, lastSyncAt, reconnect, subscribe, send }}
     >
       {children}
     </RealtimeContext.Provider>

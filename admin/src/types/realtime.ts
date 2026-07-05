@@ -24,6 +24,13 @@ export type RealtimeEvent =
       readAt?: string
     }
   | { type: 'conversation.read'; conversationId: string; unreadCountAgent: number }
+  | { type: 'typing.start'; conversationId: string; agentId: string; agentName: string }
+  | { type: 'typing.stop'; conversationId: string; agentId: string }
+
+export type RealtimeClientEvent =
+  | { type: 'ping' }
+  | { type: 'typing.start'; conversationId: string }
+  | { type: 'typing.stop'; conversationId: string }
 
 export type ConnectionState = 'connecting' | 'connected' | 'disconnected' | 'reconnecting'
 

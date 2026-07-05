@@ -61,6 +61,32 @@ export class ConversationMongoRepository implements ConversationRepository {
     });
   }
 
+  async findBotModeForInbox(opts: {
+    since: Date;
+    limit: number;
+    offset: number;
+  }): Promise<Conversation[]> {
+    const docs = await ConversationModel.find({
+      mode: 'bot',
+      status: 'active',
+      $or: [{ updatedAt: { $gte: opts.since } }, { lastUserMessageAt: { $gte: opts.since } }],
+    })
+      .sort({ updatedAt: -1 })
+      .skip(opts.offset)
+      .limit(opts.limit)
+      .lean();
+
+    return docs.map((doc) => this.toDomain(doc, []));
+  }
+
+  async countBotModeForInbox(since: Date): Promise<number> {
+    return ConversationModel.countDocuments({
+      mode: 'bot',
+      status: 'active',
+      $or: [{ updatedAt: { $gte: since } }, { lastUserMessageAt: { $gte: since } }],
+    });
+  }
+
   async findLatestByPhoneNumbers(phoneNumbers: string[]): Promise<Map<string, Conversation>> {
     if (phoneNumbers.length === 0) return new Map();
 

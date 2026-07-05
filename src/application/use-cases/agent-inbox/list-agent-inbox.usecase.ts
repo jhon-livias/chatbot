@@ -13,6 +13,8 @@ export interface ListAgentInboxInput {
   offset?: number;
   /** Admin only — ISO date; defaults to start of current month (America/Lima). */
   since?: Date;
+  /** Agent inbox scope: own assigned chats (default) or bot-mode for review. */
+  inboxFilter?: 'own' | 'bot';
 }
 
 export interface ListAgentInboxOutput {
@@ -56,6 +58,17 @@ export class ListAgentInboxUseCase {
 
     if (isAdmin) {
       return this.listAdminInbox(input, limit, offset);
+    }
+
+    const since = input.since ?? startOfCurrentMonth();
+    const inboxFilter = input.inboxFilter ?? 'own';
+
+    if (inboxFilter === 'bot') {
+      const [conversations, total] = await Promise.all([
+        this.conversationRepo.findBotModeForInbox({ since, limit, offset }),
+        this.conversationRepo.countBotModeForInbox(since),
+      ]);
+      return this.buildOutput(conversations, total, limit, offset);
     }
 
     const [conversations, total] = await Promise.all([

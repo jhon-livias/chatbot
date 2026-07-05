@@ -24,12 +24,13 @@ export function assertAgentOwnsConversation(
   }
 }
 
-/** Admins can read any conversation; agents only their assigned chats. */
+/** Admins can read any conversation; agents can preview bot-mode chats or their own. */
 export function assertCanViewConversation(
   conversation: Conversation,
   agentId: string,
   role: AgentRole = 'agent',
 ): void {
   if (role === 'admin') return;
+  if (conversation.isBotMode()) return;
   assertAgentOwnsConversation(conversation, agentId);
 }

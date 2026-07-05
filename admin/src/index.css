@@ -432,6 +432,21 @@ body { min-height: 100dvh; }
 .dash-return-btn:hover {
   background: var(--dash-hover); color: var(--dash-text); border-color: rgba(255,255,255,.2);
 }
+.dash-take-btn {
+  padding: .35rem .85rem;
+  border-radius: 8px;
+  background: #059669;
+  border: none;
+  color: #fff;
+  font-size: .78rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background .15s;
+}
+.dash-take-btn:hover { background: #047857; }
+.dash-take-btn:disabled { opacity: .6; cursor: not-allowed; }
 
 /* Messages */
 .dash-messages {

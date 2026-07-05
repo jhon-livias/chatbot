@@ -5,6 +5,7 @@ import { GetConversationHistoryUseCase } from '../../../application/use-cases/ag
 import { SendAgentMessageUseCase } from '../../../application/use-cases/agent-inbox/send-agent-message.usecase.js';
 import { MarkConversationReadUseCase } from '../../../application/use-cases/agent-inbox/mark-conversation-read.usecase.js';
 import { ReturnConversationToBotUseCase } from '../../../application/use-cases/agent-inbox/return-conversation-to-bot.usecase.js';
+import { TakeConversationUseCase } from '../../../application/use-cases/agent-inbox/take-conversation.usecase.js';
 import { CloseConversationUseCase } from '../../../application/use-cases/agent-inbox/close-conversation.usecase.js';
 import { ForbiddenError } from '../../../application/services/conversation-access.service.js';
 import type { ConversationRepository } from '../../../domain/repositories/conversation.repository.js';
@@ -56,6 +57,7 @@ export function createAgentInboxRouter(
   const sendMessage = new SendAgentMessageUseCase(conversationRepo, messagingProvider, funnelMessageRepo);
   const markRead = new MarkConversationReadUseCase(conversationRepo);
   const returnToBot = new ReturnConversationToBotUseCase(conversationRepo);
+  const takeConversation = new TakeConversationUseCase(conversationRepo, funnelUserRepo);
   const closeConv = new CloseConversationUseCase(conversationRepo);
 
   router.use('/api/v1', authenticateAgentJwt);
@@ -64,7 +66,10 @@ export function createAgentInboxRouter(
   router.get('/api/v1/inbox', async (req: Request, res: Response) => {
     const agentId = req.agent!.id;
     const role = req.agent!.role;
-    const defaultLimit = role === 'admin' ? 100 : 20;
+    const filterRaw = req.query['filter'];
+    const inboxFilter =
+      filterRaw === 'bot' || filterRaw === 'own' ? filterRaw : undefined;
+    const defaultLimit = role === 'admin' ? 100 : inboxFilter === 'bot' ? 100 : 20;
     const limit = Number(req.query['limit'] ?? defaultLimit);
     const offset = Number(req.query['offset'] ?? 0);
     const sinceRaw = req.query['since'];
@@ -79,6 +84,7 @@ export function createAgentInboxRouter(
       limit,
       offset,
       ...(since !== undefined && { since }),
+      ...(inboxFilter !== undefined && { inboxFilter }),
     });
     res.json(result);
   });
@@ -179,6 +185,43 @@ export function createAgentInboxRouter(
           detail: err.message,
         });
         res.status(403).json({ error: err.message });
+        return;
+      }
+      throw err;
+    }
+  });
+
+  // POST /api/v1/conversations/:id/take
+  router.post('/api/v1/conversations/:id/take', async (req: Request, res: Response) => {
+    const agentId = req.agent!.id;
+    const conversationId = String(req.params['id']);
+
+    try {
+      const result = await takeConversation.execute({ conversationId, agentId });
+      const conversation = await conversationRepo.findById(conversationId);
+      const auditExtra: Omit<AgentAuditFields, 'action'> = {
+        conversationId,
+        handoffBy: 'agent',
+      };
+      if (conversation?.phoneNumber) {
+        auditExtra.phoneNumber = conversation.phoneNumber;
+        const contactName = await resolveContactName(
+          conversation.phoneNumber,
+          conversation.userId,
+          funnelUserRepo,
+          userRepo,
+        );
+        if (contactName) auditExtra.contactName = contactName;
+      }
+      logAgentAuditFromRequest(req, 'conversation_assigned', auditExtra);
+      res.json(result);
+    } catch (err) {
+      if (err instanceof Error && err.message === 'Conversación no encontrada') {
+        res.status(404).json({ error: err.message });
+        return;
+      }
+      if (err instanceof Error && err.message === 'Este chat ya está en atención humana') {
+        res.status(409).json({ error: err.message });
         return;
       }
       throw err;

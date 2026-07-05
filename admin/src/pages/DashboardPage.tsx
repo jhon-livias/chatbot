@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, type FormEvent } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
-import { useInbox, type ConversationSummary } from '../hooks/useInbox'
+import { useInbox, type AgentInboxFilter, type ConversationSummary } from '../hooks/useInbox'
 import { useChatMessages } from '../hooks/useChatMessages'
 import { api } from '../api/client'
 
@@ -112,17 +112,33 @@ function ConvItem({
 
 // ─── Chat panel ──────────────────────────────────────────────────────────────
 
-function ChatPanel({ id, onBack, readOnly }: { id: string; onBack: () => void; readOnly?: boolean }) {
+function ChatPanel({
+  id,
+  onBack,
+  readOnly,
+  botPreview,
+  onTakeSuccess,
+}: {
+  id: string
+  onBack: () => void
+  readOnly?: boolean
+  botPreview?: boolean
+  onTakeSuccess?: () => void
+}) {
   const { messages, meta, loading, error, forbidden, reload } = useChatMessages(id)
   const [text, setText] = useState('')
   const [sending, setSending] = useState(false)
   const [sendError, setSendError] = useState('')
+  const [taking, setTaking] = useState(false)
+
+  const isBotPreview = botPreview === true && meta?.mode === 'bot'
+  const canReply = !readOnly && !isBotPreview
 
   useEffect(() => {
-    if (id && !readOnly) {
+    if (id && canReply) {
       api.post(`/api/v1/conversations/${id}/read`, {}).catch(() => void 0)
     }
-  }, [id, readOnly])
+  }, [id, canReply])
 
   async function handleSend(e: FormEvent) {
     e.preventDefault()
@@ -137,6 +153,20 @@ function ChatPanel({ id, onBack, readOnly }: { id: string; onBack: () => void; r
       setSendError(err instanceof Error ? err.message : 'Error al enviar')
     } finally {
       setSending(false)
+    }
+  }
+
+  async function handleTakeConversation() {
+    if (!confirm('¿Tomar esta conversación? El chat quedará asignado a ti.')) return
+    setTaking(true)
+    try {
+      await api.post(`/api/v1/conversations/${id}/take`, {})
+      reload()
+      onTakeSuccess?.()
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Error')
+    } finally {
+      setTaking(false)
     }
   }
 
@@ -186,7 +216,16 @@ function ChatPanel({ id, onBack, readOnly }: { id: string; onBack: () => void; r
             {meta?.assignedAgentName ? ` · Asesor: ${meta.assignedAgentName}` : ''}
           </span>
         </div>
-        {!readOnly && (
+        {isBotPreview && (
+          <button
+            className="dash-take-btn"
+            onClick={handleTakeConversation}
+            disabled={taking}
+          >
+            {taking ? '…' : 'Tomar conversación'}
+          </button>
+        )}
+        {canReply && (
           <button className="dash-return-btn" onClick={handleReturnToBot}>
             Devolver al bot
           </button>
@@ -224,7 +263,12 @@ function ChatPanel({ id, onBack, readOnly }: { id: string; onBack: () => void; r
         })}
       </div>
 
-      {!readOnly && (
+      {!canReply && isBotPreview && (
+        <div className="dash-input-bar" style={{ justifyContent: 'center', color: '#94a3b8', fontSize: '.85rem' }}>
+          Revisión del bot — usa «Tomar conversación» para responder
+        </div>
+      )}
+      {canReply && (
         <form className="dash-input-bar" onSubmit={handleSend}>
           {sendError && <p className="dash-send-error">{sendError}</p>}
           <div className="dash-input-row">
@@ -250,7 +294,7 @@ function ChatPanel({ id, onBack, readOnly }: { id: string; onBack: () => void; r
           </div>
         </form>
       )}
-      {readOnly && (
+      {readOnly && !isBotPreview && (
         <div className="dash-input-bar" style={{ justifyContent: 'center', color: '#94a3b8', fontSize: '.85rem' }}>
           Vista de solo lectura (administrador)
         </div>
@@ -265,7 +309,11 @@ export default function DashboardPage() {
   const { agent, logout, isAdmin } = useAuth()
   const { id } = useParams<{ id?: string }>()
   const navigate = useNavigate()
-  const { conversations, total, loading, error } = useInbox(5000, isAdmin)
+  const [agentFilter, setAgentFilter] = useState<AgentInboxFilter>('own')
+  const { conversations, total, loading, error, reload: reloadInbox } = useInbox(5000, {
+    isAdmin,
+    agentFilter: isAdmin ? undefined : agentFilter,
+  })
   const [adminFilter, setAdminFilter] = useState<AdminInboxFilter>('all')
 
   const filteredConversations = useMemo(() => {
@@ -276,6 +324,16 @@ export default function DashboardPage() {
   const displayTotal = isAdmin && adminFilter !== 'all' ? filteredConversations.length : total
 
   const hasChatOpen = Boolean(id)
+
+  function handleTakeSuccess() {
+    setAgentFilter('own')
+    reloadInbox()
+  }
+
+  function handleAgentFilterChange(filter: AgentInboxFilter) {
+    setAgentFilter(filter)
+    if (id) navigate('/')
+  }
 
   function openChat(conv: ConversationSummary) {
     navigate(`/chat/${conv.id}`)
@@ -314,7 +372,7 @@ export default function DashboardPage() {
           </div>
         </header>
 
-        {isAdmin && (
+        {isAdmin ? (
           <div className="dash-filters">
             <button
               type="button"
@@ -336,6 +394,23 @@ export default function DashboardPage() {
               onClick={() => setAdminFilter('assigned')}
             >
               Asignados
+            </button>
+          </div>
+        ) : (
+          <div className="dash-filters">
+            <button
+              type="button"
+              className={`dash-filter-btn${agentFilter === 'own' ? ' dash-filter-btn--active' : ''}`}
+              onClick={() => handleAgentFilterChange('own')}
+            >
+              Propios
+            </button>
+            <button
+              type="button"
+              className={`dash-filter-btn${agentFilter === 'bot' ? ' dash-filter-btn--active' : ''}`}
+              onClick={() => handleAgentFilterChange('bot')}
+            >
+              Bot
             </button>
           </div>
         )}
@@ -361,7 +436,9 @@ export default function DashboardPage() {
                     ? 'Sin chats asignados'
                     : isAdmin
                       ? 'Sin chats este mes'
-                      : 'Sin chats asignados'}
+                      : agentFilter === 'bot'
+                        ? 'Sin chats del bot este mes'
+                        : 'Sin chats asignados'}
               </span>
             </li>
           )}
@@ -380,7 +457,13 @@ export default function DashboardPage() {
       {/* ── Chat area ── */}
       <main className={`dash-main${hasChatOpen ? '' : ' dash-main--hidden-mobile'}`}>
         {id ? (
-          <ChatPanel id={id} onBack={closeChat} readOnly={isAdmin} />
+          <ChatPanel
+            id={id}
+            onBack={closeChat}
+            readOnly={isAdmin}
+            botPreview={!isAdmin && agentFilter === 'bot'}
+            onTakeSuccess={handleTakeSuccess}
+          />
         ) : (
           <div className="dash-chat-empty">
             <div className="dash-empty-icon">

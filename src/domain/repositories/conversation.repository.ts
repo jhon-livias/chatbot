@@ -10,6 +10,11 @@ export interface ConversationRepository {
     opts: { limit: number; offset: number },
   ): Promise<Conversation[]>;
   countHumanByAgentId(agentId: string): Promise<number>;
+  /** Bot-mode conversations with recent activity (for agent sales review). */
+  findBotModeForInbox(
+    opts: { since: Date; limit: number; offset: number },
+  ): Promise<Conversation[]>;
+  countBotModeForInbox(since: Date): Promise<number>;
   /** Latest conversation per phone (prefers active, then most recently updated). */
   findLatestByPhoneNumbers(phoneNumbers: string[]): Promise<Map<string, Conversation>>;
   save(conversation: Conversation): Promise<Conversation>;

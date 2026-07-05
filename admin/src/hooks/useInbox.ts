@@ -25,26 +25,44 @@ interface InboxResponse {
   offset: number
 }
 
-export function useInbox(pollIntervalMs = 5000, isAdmin = false) {
+export type AgentInboxFilter = 'own' | 'bot'
+
+interface UseInboxOptions {
+  isAdmin?: boolean
+  agentFilter?: AgentInboxFilter
+}
+
+export function useInbox(pollIntervalMs = 5000, options: UseInboxOptions = {}) {
+  const { isAdmin = false, agentFilter = 'own' } = options
   const [conversations, setConversations] = useState<ConversationSummary[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
-  const fetch = useCallback(async (initial = false) => {
-    if (initial) setLoading(true)
-    try {
-      const params = isAdmin ? '?limit=100' : ''
-      const data = await api.get<InboxResponse>(`/api/v1/inbox${params}`)
-      setConversations(data.conversations)
-      setTotal(data.total)
-      setError('')
-    } catch (err) {
-      if (initial) setError(err instanceof Error ? err.message : 'Error al cargar chats')
-    } finally {
-      if (initial) setLoading(false)
-    }
-  }, [isAdmin])
+  const fetch = useCallback(
+    async (initial = false) => {
+      if (initial) setLoading(true)
+      try {
+        const params = new URLSearchParams()
+        if (isAdmin) {
+          params.set('limit', '100')
+        } else if (agentFilter === 'bot') {
+          params.set('filter', 'bot')
+          params.set('limit', '100')
+        }
+        const qs = params.toString()
+        const data = await api.get<InboxResponse>(`/api/v1/inbox${qs ? `?${qs}` : ''}`)
+        setConversations(data.conversations)
+        setTotal(data.total)
+        setError('')
+      } catch (err) {
+        if (initial) setError(err instanceof Error ? err.message : 'Error al cargar chats')
+      } finally {
+        if (initial) setLoading(false)
+      }
+    },
+    [isAdmin, agentFilter],
+  )
 
   useEffect(() => {
     void fetch(true)
@@ -52,5 +70,5 @@ export function useInbox(pollIntervalMs = 5000, isAdmin = false) {
     return () => clearInterval(id)
   }, [fetch, pollIntervalMs])
 
-  return { conversations, total, loading, error }
+  return { conversations, total, loading, error, reload: () => void fetch(false) }
 }

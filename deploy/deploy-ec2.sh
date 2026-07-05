@@ -43,11 +43,11 @@ echo "==> nginx config (admision + chatbot)"
 if command -v nginx >/dev/null 2>&1; then
   sudo cp deploy/nginx/admision.uprit.edu.pe.conf /etc/nginx/sites-available/
   sudo cp deploy/nginx/chatbot.uprit.edu.pe.conf /etc/nginx/sites-available/chatbot.uprit.edu.pe.conf
-  API_PORT="$(grep -E '^API_PORT=' .env | cut -d= -f2- | tr -d '[:space:]' || true)"
-  API_PORT="${API_PORT:-8090}"
-  if [[ "${API_PORT}" != "8090" ]]; then
-    sudo sed -i "s/127.0.0.1:8090/127.0.0.1:${API_PORT}/g" /etc/nginx/sites-available/admision.uprit.edu.pe.conf
-    sudo sed -i "s/127.0.0.1:8090/127.0.0.1:${API_PORT}/g" /etc/nginx/sites-available/chatbot.uprit.edu.pe.conf
+  API_PORT="\$(grep -E '^API_PORT=' .env | cut -d= -f2- | tr -d '[:space:]' || true)"
+  API_PORT="\${API_PORT:-8090}"
+  if [[ "\${API_PORT}" != "8090" ]]; then
+    sudo sed -i "s/127.0.0.1:8090/127.0.0.1:\${API_PORT}/g" /etc/nginx/sites-available/admision.uprit.edu.pe.conf
+    sudo sed -i "s/127.0.0.1:8090/127.0.0.1:\${API_PORT}/g" /etc/nginx/sites-available/chatbot.uprit.edu.pe.conf
   fi
   sudo nginx -t
   sudo systemctl reload nginx

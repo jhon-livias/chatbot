@@ -4,12 +4,15 @@ import type { AgentRepository } from '../../../domain/repositories/agent.reposit
 import type { AgentRole } from '../../../domain/entities/agent.entity.js';
 import type { Conversation } from '../../../domain/entities/conversation.entity.js';
 import type { FunnelUserMongoRepository } from '../../../infrastructure/database/mongodb/repositories/funnel-user.mongo-repository.js';
+import { startOfCurrentMonth } from '../../../infrastructure/shared/start-of-month.js';
 
 export interface ListAgentInboxInput {
   agentId: string;
   role?: AgentRole;
   limit?: number;
   offset?: number;
+  /** Admin only — ISO date; defaults to start of current month (America/Lima). */
+  since?: Date;
 }
 
 export interface ListAgentInboxOutput {
@@ -45,19 +48,61 @@ export class ListAgentInboxUseCase {
   ) {}
 
   async execute(input: ListAgentInboxInput): Promise<ListAgentInboxOutput> {
-    const limit = Math.min(input.limit ?? 20, 100);
-    const offset = input.offset ?? 0;
     const isAdmin = input.role === 'admin';
+    const defaultLimit = isAdmin ? 100 : 20;
+    const maxLimit = isAdmin ? 200 : 100;
+    const limit = Math.min(input.limit ?? defaultLimit, maxLimit);
+    const offset = input.offset ?? 0;
+
+    if (isAdmin) {
+      return this.listAdminInbox(input, limit, offset);
+    }
 
     const [conversations, total] = await Promise.all([
-      isAdmin
-        ? this.conversationRepo.findAllActiveForInbox({ limit, offset })
-        : this.conversationRepo.findHumanByAgentId(input.agentId, { limit, offset }),
-      isAdmin
-        ? this.conversationRepo.countAllActiveForInbox()
-        : this.conversationRepo.countHumanByAgentId(input.agentId),
+      this.conversationRepo.findHumanByAgentId(input.agentId, { limit, offset }),
+      this.conversationRepo.countHumanByAgentId(input.agentId),
     ]);
 
+    return this.buildOutput(conversations, total, limit, offset);
+  }
+
+  private async listAdminInbox(
+    input: ListAgentInboxInput,
+    limit: number,
+    offset: number,
+  ): Promise<ListAgentInboxOutput> {
+    const since = input.since ?? startOfCurrentMonth();
+
+    const [funnelLeads, total] = await Promise.all([
+      this.funnelUserRepo.findForAdminInbox({ since, limit, offset }),
+      this.funnelUserRepo.countForAdminInbox(since),
+    ]);
+
+    const phoneKeys = funnelLeads.map((f) => this.normalizePhone(f.senderId));
+    const convMap = await this.conversationRepo.findLatestByPhoneNumbers(phoneKeys);
+
+    const conversations: Conversation[] = [];
+    const funnelNames = new Map<string, string>();
+
+    for (const lead of funnelLeads) {
+      const key = this.normalizePhone(lead.senderId);
+      const conv = convMap.get(key);
+      if (!conv) continue;
+      conversations.push(conv);
+      if (lead.name?.trim()) funnelNames.set(key, lead.name.trim());
+    }
+
+    const output = await this.buildOutput(conversations, total, limit, offset, funnelNames);
+    return output;
+  }
+
+  private async buildOutput(
+    conversations: Conversation[],
+    total: number,
+    limit: number,
+    offset: number,
+    presetFunnelNames?: Map<string, string>,
+  ): Promise<ListAgentInboxOutput> {
     const phoneNumbers = conversations.map((c) => c.phoneNumber);
     const userIds = conversations.map((c) => c.userId);
     const assignedAgentIds = [
@@ -66,11 +111,15 @@ export class ListAgentInboxUseCase {
       ),
     ];
 
-    const [funnelNames, userNames, agentNames] = await Promise.all([
-      this.funnelUserRepo.findNamesBySenderIds(phoneNumbers),
+    const [funnelNamesLookup, userNames, agentNames] = await Promise.all([
+      presetFunnelNames
+        ? Promise.resolve(presetFunnelNames)
+        : this.funnelUserRepo.findNamesBySenderIds(phoneNumbers),
       this.userRepo.findNamesByIds(userIds),
       this.agentRepo.findNamesByIds(assignedAgentIds),
     ]);
+
+    const funnelNames = presetFunnelNames ?? funnelNamesLookup;
 
     return {
       conversations: conversations.map((c) =>
@@ -80,6 +129,10 @@ export class ListAgentInboxUseCase {
       limit,
       offset,
     };
+  }
+
+  private normalizePhone(value: string): string {
+    return value.trim().replace(/^\+/, '');
   }
 
   private toSummary(

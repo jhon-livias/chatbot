@@ -130,6 +130,35 @@ export class FunnelUserMongoRepository {
     return this.toDomain(doc as LeanFunnelUser);
   }
 
+  /** WhatsApp leads with activity since the given date (matches admin.uprit bot/leads scope). */
+  async findForAdminInbox(opts: {
+    since: Date;
+    limit: number;
+    offset: number;
+  }): Promise<Array<FunnelUserData & { updatedAt: Date; createdAt: Date }>> {
+    const docs = await FunnelUserModel.find({
+      platform: 'whatsapp',
+      $or: [{ updatedAt: { $gte: opts.since } }, { createdAt: { $gte: opts.since } }],
+    })
+      .sort({ updatedAt: -1 })
+      .skip(opts.offset)
+      .limit(opts.limit)
+      .lean();
+
+    return (docs as LeanFunnelUser[]).map((doc) => ({
+      ...this.toDomain(doc),
+      updatedAt: doc.updatedAt as Date,
+      createdAt: doc.createdAt as Date,
+    }));
+  }
+
+  async countForAdminInbox(since: Date): Promise<number> {
+    return FunnelUserModel.countDocuments({
+      platform: 'whatsapp',
+      $or: [{ updatedAt: { $gte: since } }, { createdAt: { $gte: since } }],
+    });
+  }
+
   /** Batch lookup display names keyed by normalized phone (no leading +). */
   async findNamesBySenderIds(senderIds: string[]): Promise<Map<string, string>> {
     if (senderIds.length === 0) return new Map();

@@ -25,7 +25,7 @@ interface InboxResponse {
   offset: number
 }
 
-export function useInbox(pollIntervalMs = 5000) {
+export function useInbox(pollIntervalMs = 5000, isAdmin = false) {
   const [conversations, setConversations] = useState<ConversationSummary[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -34,7 +34,8 @@ export function useInbox(pollIntervalMs = 5000) {
   const fetch = useCallback(async (initial = false) => {
     if (initial) setLoading(true)
     try {
-      const data = await api.get<InboxResponse>('/api/v1/inbox')
+      const params = isAdmin ? '?limit=100' : ''
+      const data = await api.get<InboxResponse>(`/api/v1/inbox${params}`)
       setConversations(data.conversations)
       setTotal(data.total)
       setError('')
@@ -43,7 +44,7 @@ export function useInbox(pollIntervalMs = 5000) {
     } finally {
       if (initial) setLoading(false)
     }
-  }, [])
+  }, [isAdmin])
 
   useEffect(() => {
     void fetch(true)

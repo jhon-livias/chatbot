@@ -64,10 +64,22 @@ export function createAgentInboxRouter(
   router.get('/api/v1/inbox', async (req: Request, res: Response) => {
     const agentId = req.agent!.id;
     const role = req.agent!.role;
-    const limit = Number(req.query['limit'] ?? 20);
+    const defaultLimit = role === 'admin' ? 100 : 20;
+    const limit = Number(req.query['limit'] ?? defaultLimit);
     const offset = Number(req.query['offset'] ?? 0);
+    const sinceRaw = req.query['since'];
+    const since =
+      typeof sinceRaw === 'string' && sinceRaw.trim()
+        ? new Date(sinceRaw)
+        : undefined;
 
-    const result = await listInbox.execute({ agentId, role, limit, offset });
+    const result = await listInbox.execute({
+      agentId,
+      role,
+      limit,
+      offset,
+      ...(since !== undefined && { since }),
+    });
     res.json(result);
   });
 

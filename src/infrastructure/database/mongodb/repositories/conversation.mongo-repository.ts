@@ -61,18 +61,41 @@ export class ConversationMongoRepository implements ConversationRepository {
     });
   }
 
-  async findAllActiveForInbox(opts: { limit: number; offset: number }): Promise<Conversation[]> {
-    const docs = await ConversationModel.find({ status: 'active' })
-      .sort({ updatedAt: -1 })
-      .skip(opts.offset)
-      .limit(opts.limit)
-      .lean();
+  async findLatestByPhoneNumbers(phoneNumbers: string[]): Promise<Map<string, Conversation>> {
+    if (phoneNumbers.length === 0) return new Map();
 
-    return docs.map((doc) => this.toDomain(doc, []));
-  }
+    const variants = new Set<string>();
+    for (const p of phoneNumbers) {
+      const normalized = p.trim().replace(/^\+/, '');
+      variants.add(normalized);
+      variants.add(`+${normalized}`);
+    }
 
-  async countAllActiveForInbox(): Promise<number> {
-    return ConversationModel.countDocuments({ status: 'active' });
+    const docs = await ConversationModel.find({ phoneNumber: { $in: [...variants] } }).lean();
+    const grouped = new Map<string, Array<Record<string, unknown>>>();
+
+    for (const doc of docs) {
+      const key = String(doc.phoneNumber).replace(/^\+/, '');
+      const list = grouped.get(key) ?? [];
+      list.push(doc as Record<string, unknown>);
+      grouped.set(key, list);
+    }
+
+    const result = new Map<string, Conversation>();
+    for (const [key, group] of grouped) {
+      group.sort((a, b) => {
+        const aActive = a['status'] === 'active';
+        const bActive = b['status'] === 'active';
+        if (aActive && !bActive) return -1;
+        if (bActive && !aActive) return 1;
+        return (
+          new Date(String(b['updatedAt'])).getTime() - new Date(String(a['updatedAt'])).getTime()
+        );
+      });
+      result.set(key, this.toDomain(group[0]!, []));
+    }
+
+    return result;
   }
 
   async save(conversation: Conversation): Promise<Conversation> {

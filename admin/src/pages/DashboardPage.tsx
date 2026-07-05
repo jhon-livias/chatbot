@@ -257,7 +257,7 @@ export default function DashboardPage() {
   const { agent, logout, isAdmin } = useAuth()
   const { id } = useParams<{ id?: string }>()
   const navigate = useNavigate()
-  const { conversations, total, loading, error } = useInbox()
+  const { conversations, total, loading, error } = useInbox(5000, isAdmin)
 
   const hasChatOpen = Boolean(id)
 

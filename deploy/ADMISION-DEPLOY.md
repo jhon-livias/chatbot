@@ -11,6 +11,7 @@ admision.uprit.edu.pe          chatbot.uprit.edu.pe
         │                              │
    /  → admin/dist (SPA)          /webhook → :8090
    /api → proxy :8090             /health  → :8090
+   /api/v1/ws → WS upgrade :8090
         │                              │
         └──────────┬───────────────────┘
                    │
@@ -110,6 +111,7 @@ curl -X POST https://admision.uprit.edu.pe/api/v1/auth/login \
 Checklist manual:
 - [ ] `https://admision.uprit.edu.pe` muestra pantalla de login
 - [ ] Login con asesor → entra al inbox
+- [ ] Banner **Conectado** (WebSocket); DevTools → Network → WS → status **101**
 - [ ] Responder en chat → lead recibe WhatsApp
 - [ ] `https://chatbot.uprit.edu.pe/webhook` sigue operativo (Meta)
 - [ ] Sin errores CORS en consola del navegador (admision)
@@ -118,7 +120,7 @@ Checklist manual:
 
 | Archivo | Uso |
 |---------|-----|
-| `deploy/nginx/admision.uprit.edu.pe.conf` | SPA + proxy `/api` |
+| `deploy/nginx/admision.uprit.edu.pe.conf` | SPA + proxy `/api` + WebSocket `/api/v1/ws` |
 | `deploy/nginx/chatbot.uprit.edu.pe.conf` | Solo webhook + health |
 | `deploy/setup-admision-domain.sh` | Bootstrap automatizado |
 | `admin/dist/` | Build del panel (generado, no versionar) |
@@ -140,6 +142,7 @@ docker rm admin-artifacts
 
 | Problema | Solución |
 |----------|----------|
+| WS "Reconectando…" permanente | Verificar `location /api/v1/ws` en nginx con headers `Upgrade`/`Connection upgrade`; `sudo nginx -t && sudo systemctl reload nginx` |
 | 502 en `/api` | Verificar `docker compose ps app` y `curl http://127.0.0.1:8090/health` |
 | Pantalla en blanco | Verificar `admin/dist/index.html` existe; `npm run admin:build` |
 | 404 en rutas React | Nginx debe tener `try_files $uri $uri/ /index.html` |

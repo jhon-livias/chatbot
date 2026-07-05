@@ -118,9 +118,12 @@ Checklist manual:
 
 ## Archivos de configuración
 
+En producción el VPS usa **Apache** (puertos 80/443). Nginx en el repo aplica a entornos bootstrap con nginx solo.
+
 | Archivo | Uso |
 |---------|-----|
-| `deploy/nginx/admision.uprit.edu.pe.conf` | SPA + proxy `/api` + WebSocket `/api/v1/ws` |
+| `deploy/apache/admision.uprit.edu.pe.conf` | HTTP → redirect + proxy `/api` + WS |
+| `deploy/apache/admision-le-ssl.conf` | HTTPS panel + proxy `/api` + WS |
 | `deploy/nginx/chatbot.uprit.edu.pe.conf` | Solo webhook + health |
 | `deploy/setup-admision-domain.sh` | Bootstrap automatizado |
 | `admin/dist/` | Build del panel (generado, no versionar) |

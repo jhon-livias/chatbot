@@ -31,6 +31,7 @@ git pull --ff-only origin main
 echo "==> npm install + build:all"
 npm ci --include=dev --ignore-scripts
 (cd admin && npm ci --include=dev --ignore-scripts)
+export PATH="\${PWD}/node_modules/.bin:\${PWD}/admin/node_modules/.bin:\${PATH}"
 npm run build:all
 
 echo "==> docker compose build app"
@@ -39,8 +40,16 @@ docker compose build app
 echo "==> docker compose up -d app"
 docker compose up -d app
 
-echo "==> nginx config (admision + chatbot)"
-if command -v nginx >/dev/null 2>&1; then
+echo "==> web proxy config"
+if command -v apache2 >/dev/null 2>&1 && systemctl is-active --quiet apache2 2>/dev/null; then
+  sudo cp deploy/apache/admision.uprit.edu.pe.conf /etc/apache2/sites-available/admision.conf
+  if [[ -f deploy/apache/admision-le-ssl.conf ]]; then
+    sudo cp deploy/apache/admision-le-ssl.conf /etc/apache2/sites-available/admision-le-ssl.conf
+  fi
+  sudo a2enmod proxy_wstunnel 2>/dev/null || true
+  sudo apachectl configtest
+  sudo systemctl reload apache2
+elif command -v nginx >/dev/null 2>&1; then
   sudo cp deploy/nginx/admision.uprit.edu.pe.conf /etc/nginx/sites-available/
   sudo cp deploy/nginx/chatbot.uprit.edu.pe.conf /etc/nginx/sites-available/chatbot.uprit.edu.pe.conf
   API_PORT="\$(grep -E '^API_PORT=' .env | cut -d= -f2- | tr -d '[:space:]' || true)"

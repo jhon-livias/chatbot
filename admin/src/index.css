@@ -293,6 +293,36 @@ body { min-height: 100dvh; }
 }
 .dash-logout-btn:hover { background: var(--dash-hover); color: var(--dash-text); }
 
+.dash-filters {
+  display: flex;
+  gap: .35rem;
+  padding: .65rem 1rem;
+  border-bottom: 1px solid var(--dash-border);
+  flex-shrink: 0;
+}
+.dash-filter-btn {
+  flex: 1;
+  padding: .4rem .5rem;
+  font-size: .72rem;
+  font-weight: 600;
+  color: var(--dash-muted);
+  background: transparent;
+  border: 1px solid var(--dash-border);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background .15s, color .15s, border-color .15s;
+  white-space: nowrap;
+}
+.dash-filter-btn:hover {
+  background: var(--dash-hover);
+  color: var(--dash-text);
+}
+.dash-filter-btn--active {
+  color: #fff;
+  background: var(--dash-accent, #7c3aed);
+  border-color: var(--dash-accent, #7c3aed);
+}
+
 .dash-conv-list {
   list-style: none;
   flex: 1;

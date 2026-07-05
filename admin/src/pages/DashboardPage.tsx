@@ -1,4 +1,4 @@
-import { useState, useEffect, type FormEvent } from 'react'
+import { useState, useEffect, useMemo, type FormEvent } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { useInbox, type ConversationSummary } from '../hooks/useInbox'
@@ -41,6 +41,14 @@ function formatTime(iso: string | null): string {
   if (d.toDateString() === now.toDateString())
     return d.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })
   return d.toLocaleDateString('es-PE', { day: '2-digit', month: 'short' })
+}
+
+export type AdminInboxFilter = 'all' | 'bot' | 'assigned'
+
+function matchesAdminFilter(conv: ConversationSummary, filter: AdminInboxFilter): boolean {
+  if (filter === 'bot') return conv.mode === 'bot'
+  if (filter === 'assigned') return conv.mode === 'human' && conv.assignedAgentId !== null
+  return true
 }
 
 // ─── Sidebar item ────────────────────────────────────────────────────────────
@@ -258,6 +266,14 @@ export default function DashboardPage() {
   const { id } = useParams<{ id?: string }>()
   const navigate = useNavigate()
   const { conversations, total, loading, error } = useInbox(5000, isAdmin)
+  const [adminFilter, setAdminFilter] = useState<AdminInboxFilter>('all')
+
+  const filteredConversations = useMemo(() => {
+    if (!isAdmin || adminFilter === 'all') return conversations
+    return conversations.filter((c) => matchesAdminFilter(c, adminFilter))
+  }, [conversations, isAdmin, adminFilter])
+
+  const displayTotal = isAdmin && adminFilter !== 'all' ? filteredConversations.length : total
 
   const hasChatOpen = Boolean(id)
 
@@ -281,7 +297,9 @@ export default function DashboardPage() {
               </svg>
             </span>
             Chats
-            {total > 0 && <span className="dash-badge dash-badge--header">{total}</span>}
+            {displayTotal > 0 && (
+              <span className="dash-badge dash-badge--header">{displayTotal}</span>
+            )}
           </div>
           <div className="dash-sidebar-agent">
             <span className="dash-agent-name">
@@ -296,8 +314,34 @@ export default function DashboardPage() {
           </div>
         </header>
 
+        {isAdmin && (
+          <div className="dash-filters">
+            <button
+              type="button"
+              className={`dash-filter-btn${adminFilter === 'all' ? ' dash-filter-btn--active' : ''}`}
+              onClick={() => setAdminFilter('all')}
+            >
+              Todos
+            </button>
+            <button
+              type="button"
+              className={`dash-filter-btn${adminFilter === 'bot' ? ' dash-filter-btn--active' : ''}`}
+              onClick={() => setAdminFilter('bot')}
+            >
+              Bot
+            </button>
+            <button
+              type="button"
+              className={`dash-filter-btn${adminFilter === 'assigned' ? ' dash-filter-btn--active' : ''}`}
+              onClick={() => setAdminFilter('assigned')}
+            >
+              Asignados
+            </button>
+          </div>
+        )}
+
         <ul className="dash-conv-list">
-          {loading && conversations.length === 0 && (
+          {loading && filteredConversations.length === 0 && (
             <li className="dash-conv-empty">
               <span className="spinner" />
             </li>
@@ -307,13 +351,21 @@ export default function DashboardPage() {
               <span style={{ color: '#f87171', fontSize: '.85rem' }}>{error}</span>
             </li>
           )}
-          {!loading && !error && conversations.length === 0 && (
+          {!loading && !error && filteredConversations.length === 0 && (
             <li className="dash-conv-empty">
               <span style={{ fontSize: '2rem' }}>📭</span>
-              <span>{isAdmin ? 'Sin chats activos' : 'Sin chats asignados'}</span>
+              <span>
+                {isAdmin && adminFilter === 'bot'
+                  ? 'Sin chats en bot'
+                  : isAdmin && adminFilter === 'assigned'
+                    ? 'Sin chats asignados'
+                    : isAdmin
+                      ? 'Sin chats este mes'
+                      : 'Sin chats asignados'}
+              </span>
             </li>
           )}
-          {conversations.map((c) => (
+          {filteredConversations.map((c) => (
             <ConvItem
               key={c.id}
               conv={c}

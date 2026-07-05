@@ -7,7 +7,7 @@ import { useTypingEmitter, useTypingIndicator } from '../hooks/useTypingIndicato
 import { useMessageNotifications } from '../hooks/useMessageNotifications'
 import { api } from '../api/client'
 import MessageBubble from '../components/MessageBubble'
-import ConnectionBanner from '../components/ConnectionBanner'
+import ConnectionBanner, { ConnectionStatus } from '../components/ConnectionBanner'
 import TypingIndicator from '../components/TypingIndicator'
 import SoundToggle from '../components/SoundToggle'
 
@@ -90,17 +90,22 @@ function ConvItem({
         </span>
       </div>
       <div className="dash-conv-body">
-        <div className="dash-conv-row">
-          <span className="dash-conv-name">
-            {conv.contactName ?? 'Contacto'}
+        <div className="dash-conv-row dash-conv-row--top">
+          <span className="dash-conv-name" title={conv.phoneNumber}>
+            {conv.contactName ?? conv.phoneNumber}
           </span>
-          <span className="dash-conv-time">{formatTime(lastActivity)}</span>
+          <div className="dash-conv-meta">
+            <span className="dash-conv-time">{formatTime(lastActivity)}</span>
+            {hasUnread && (
+              <span className="dash-badge">{conv.unreadCountAgent}</span>
+            )}
+          </div>
         </div>
-        <div className="dash-conv-row">
-          <span className="dash-conv-phone">{conv.phoneNumber}</span>
-        </div>
-        <div className="dash-conv-row">
+        <div className="dash-conv-row dash-conv-row--bottom">
           <span className="dash-conv-preview">
+            {conv.contactName && (
+              <span className="dash-conv-phone-inline">{conv.phoneNumber}</span>
+            )}
             {conv.lastMessagePreview ??
               (conv.mode === 'human'
                 ? showAssignedAgent && conv.assignedAgentName
@@ -108,9 +113,6 @@ function ConvItem({
                   : 'En atención'
                 : 'En bot')}
           </span>
-          {hasUnread && (
-            <span className="dash-badge">{conv.unreadCountAgent}</span>
-          )}
         </div>
       </div>
     </li>
@@ -381,28 +383,33 @@ export default function DashboardPage() {
       {/* ── Sidebar ── */}
       <aside className={`dash-sidebar${hasChatOpen ? ' dash-sidebar--hidden-mobile' : ''}`}>
         <header className="dash-sidebar-header">
-          <div className="dash-sidebar-title">
-            <span className="dash-sidebar-icon">
-              <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18">
-                <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/>
-              </svg>
-            </span>
-            Chats
-            {displayTotal > 0 && (
-              <span className="dash-badge dash-badge--header">{displayTotal}</span>
-            )}
+          <div className="dash-sidebar-header-row">
+            <div className="dash-sidebar-title">
+              <span className="dash-sidebar-icon">
+                <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18">
+                  <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/>
+                </svg>
+              </span>
+              Chats
+              {displayTotal > 0 && (
+                <span className="dash-badge dash-badge--header">{displayTotal}</span>
+              )}
+            </div>
+            <div className="dash-sidebar-actions">
+              <SoundToggle />
+              <button className="dash-logout-btn" onClick={logout} title="Cerrar sesión">
+                <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
+                  <path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/>
+                </svg>
+              </button>
+            </div>
           </div>
-          <div className="dash-sidebar-agent">
+          <div className="dash-sidebar-user">
             <span className="dash-agent-name">
               {agent?.name}
-              {isAdmin && <span style={{ opacity: 0.7, fontSize: '.75rem' }}> · Admin</span>}
+              {isAdmin && <span className="dash-agent-role"> · Admin</span>}
             </span>
-            <SoundToggle />
-            <button className="dash-logout-btn" onClick={logout} title="Cerrar sesión">
-              <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
-                <path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/>
-              </svg>
-            </button>
+            <ConnectionStatus />
           </div>
         </header>
 

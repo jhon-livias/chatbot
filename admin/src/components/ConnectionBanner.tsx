@@ -9,6 +9,20 @@ function formatAgo(date: Date): string {
   return `hace ${mins} min`
 }
 
+/** Subtle inline indicator — only when WebSocket is connected. */
+export function ConnectionStatus() {
+  const { connectionState } = useRealtime()
+  if (connectionState !== 'connected') return null
+
+  return (
+    <span className="conn-live" title="Conectado en tiempo real">
+      <span className="conn-dot" aria-hidden="true" />
+      En vivo
+    </span>
+  )
+}
+
+/** Full-width banner — only when connection is not healthy. */
 export default function ConnectionBanner() {
   const { connectionState, lastSyncAt, reconnect } = useRealtime()
   const [, tick] = useState(0)
@@ -19,13 +33,7 @@ export default function ConnectionBanner() {
     return () => clearInterval(id)
   }, [connectionState])
 
-  if (connectionState === 'connected') {
-    return (
-      <div className="conn-status conn-status--connected" title="Conectado en tiempo real">
-        <span className="conn-dot conn-dot--green" />
-      </div>
-    )
-  }
+  if (connectionState === 'connected') return null
 
   if (connectionState === 'connecting') {
     return (
@@ -59,7 +67,7 @@ export default function ConnectionBanner() {
         )}
       </span>
       <button type="button" className="conn-reconnect-btn" onClick={reconnect}>
-        Reconectar ahora
+        Reconectar
       </button>
     </div>
   )

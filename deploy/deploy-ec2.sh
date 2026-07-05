@@ -29,8 +29,8 @@ echo "==> git pull"
 git pull --ff-only origin main
 
 echo "==> npm install + build:all"
-npm ci --ignore-scripts
-(cd admin && npm ci --ignore-scripts)
+npm ci --include=dev --ignore-scripts
+(cd admin && npm ci --include=dev --ignore-scripts)
 npm run build:all
 
 echo "==> docker compose build app"

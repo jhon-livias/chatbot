@@ -1,8 +1,8 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from './auth/AuthContext'
 import ProtectedRoute from './components/ProtectedRoute'
+import DashboardShell from './components/DashboardShell'
 import LoginPage from './pages/LoginPage'
-import DashboardPage from './pages/DashboardPage'
 
 export default function App() {
   return (
@@ -14,7 +14,7 @@ export default function App() {
             path="/"
             element={
               <ProtectedRoute>
-                <DashboardPage />
+                <DashboardShell />
               </ProtectedRoute>
             }
           />
@@ -22,7 +22,7 @@ export default function App() {
             path="/chat/:id"
             element={
               <ProtectedRoute>
-                <DashboardPage />
+                <DashboardShell />
               </ProtectedRoute>
             }
           />

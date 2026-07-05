@@ -1,13 +1,9 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react'
+import { flushSync } from 'react-dom'
 import { api, logout as apiLogout } from '../api/client'
+import { normalizeAgent, resolveIsAdmin, type AgentInfo } from './auth-utils'
 
-export interface AgentInfo {
-  id: string
-  name: string
-  username: string
-  email: string
-  role: 'agent' | 'admin'
-}
+export type { AgentInfo }
 
 interface AuthState {
   token: string | null
@@ -19,6 +15,8 @@ interface AuthContextValue extends AuthState {
   logout: () => void
   isAuthenticated: boolean
   isAdmin: boolean
+  /** Bumps on each login so routed views remount with fresh auth-derived UI. */
+  sessionKey: string
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -26,21 +24,35 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 function loadInitialState(): AuthState {
   const token = localStorage.getItem('uprit_agent_token')
   const raw = localStorage.getItem('uprit_agent_info')
-  const agent = raw ? (JSON.parse(raw) as AgentInfo) : null
+  const parsed = raw ? (JSON.parse(raw) as AgentInfo) : null
+  const agent = normalizeAgent(parsed, token)
+  if (agent && raw && parsed && !parsed.role && agent.role) {
+    localStorage.setItem('uprit_agent_info', JSON.stringify(agent))
+  }
   return { token, agent }
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>(loadInitialState)
+  const [sessionKey, setSessionKey] = useState(() =>
+    state.token ? `${state.token.slice(-12)}:${state.agent?.id ?? ''}` : 'anon',
+  )
 
   const login = useCallback(async (username: string, password: string) => {
     const data = await api.post<{ token: string; agent: AgentInfo }>('/api/v1/auth/login', {
       username,
       password,
     })
+    const agent = normalizeAgent(data.agent, data.token)
+    if (!agent) throw new Error('Respuesta de login inválida')
+
     localStorage.setItem('uprit_agent_token', data.token)
-    localStorage.setItem('uprit_agent_info', JSON.stringify(data.agent))
-    setState({ token: data.token, agent: data.agent })
+    localStorage.setItem('uprit_agent_info', JSON.stringify(agent))
+
+    flushSync(() => {
+      setState({ token: data.token, agent })
+      setSessionKey(`${data.token.slice(-12)}:${agent.id}:${agent.role}`)
+    })
   }, [])
 
   const logout = useCallback(() => {
@@ -54,6 +66,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem('uprit_agent_token')
     localStorage.removeItem('uprit_agent_info')
     setState({ token: null, agent: null })
+    setSessionKey('anon')
     apiLogout()
   }, [])
 
@@ -64,7 +77,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         login,
         logout,
         isAuthenticated: state.token !== null,
-        isAdmin: state.agent?.role === 'admin',
+        isAdmin: resolveIsAdmin(state.agent, state.token),
+        sessionKey,
       }}
     >
       {children}

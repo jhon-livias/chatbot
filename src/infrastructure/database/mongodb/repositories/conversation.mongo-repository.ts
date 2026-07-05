@@ -61,6 +61,20 @@ export class ConversationMongoRepository implements ConversationRepository {
     });
   }
 
+  async findAllActiveForInbox(opts: { limit: number; offset: number }): Promise<Conversation[]> {
+    const docs = await ConversationModel.find({ status: 'active' })
+      .sort({ updatedAt: -1 })
+      .skip(opts.offset)
+      .limit(opts.limit)
+      .lean();
+
+    return docs.map((doc) => this.toDomain(doc, []));
+  }
+
+  async countAllActiveForInbox(): Promise<number> {
+    return ConversationModel.countDocuments({ status: 'active' });
+  }
+
   async save(conversation: Conversation): Promise<Conversation> {
     const props = conversation.toProps();
     await ConversationModel.findByIdAndUpdate(

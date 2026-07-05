@@ -24,6 +24,7 @@
     "admin:build": "npm run build --prefix admin",
     "build:all": "npm run build && npm run admin:build",
     "seed:agents": "node --env-file=.env deploy/seed-agent-passwords.mjs",
+    "seed:admin": "node --env-file=.env deploy/create-admin-user.mjs",
     "docker:build": "docker compose build --no-cache",
     "docker:up": "docker compose up -d",
     "docker:up:build": "docker compose up -d --build",

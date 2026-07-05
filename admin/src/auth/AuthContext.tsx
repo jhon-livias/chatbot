@@ -6,6 +6,7 @@ export interface AgentInfo {
   name: string
   username: string
   email: string
+  role: 'agent' | 'admin'
 }
 
 interface AuthState {
@@ -17,6 +18,7 @@ interface AuthContextValue extends AuthState {
   login: (username: string, password: string) => Promise<void>
   logout: () => void
   isAuthenticated: boolean
+  isAdmin: boolean
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -57,7 +59,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ ...state, login, logout, isAuthenticated: state.token !== null }}
+      value={{
+        ...state,
+        login,
+        logout,
+        isAuthenticated: state.token !== null,
+        isAdmin: state.agent?.role === 'admin',
+      }}
     >
       {children}
     </AuthContext.Provider>

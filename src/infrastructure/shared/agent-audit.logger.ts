@@ -6,6 +6,7 @@ export type AgentAuditAction =
   | 'login_failed'
   | 'logout'
   | 'message_sent'
+  | 'conversation_assigned'
   | 'return_to_bot'
   | 'conversation_closed'
   | 'access_denied';
@@ -15,8 +16,10 @@ export interface AgentAuditFields {
   agentId?: string;
   agentUsername?: string;
   agentName?: string;
+  contactName?: string;
   conversationId?: string;
   phoneNumber?: string;
+  handoffBy?: string;
   detail?: string;
   ip?: string;
   contentPreview?: string;
@@ -27,6 +30,7 @@ const ACTION_LABELS: Record<AgentAuditAction, string> = {
   login_failed: 'Login fallido',
   logout: 'Cierre de sesión',
   message_sent: 'Mensaje enviado',
+  conversation_assigned: 'Chat asignado a asesor',
   return_to_bot: 'Devuelto al bot',
   conversation_closed: 'Conversación cerrada',
   access_denied: 'Acceso denegado',

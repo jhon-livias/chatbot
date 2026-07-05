@@ -1,6 +1,7 @@
 import { Schema, model, type HydratedDocument, type Types } from 'mongoose';
 
 export type AgentStatus = 'Active' | 'Inactive';
+export type AgentRole = 'agent' | 'admin';
 
 export interface IAgentDocument {
   _id: Types.ObjectId;
@@ -13,6 +14,7 @@ export interface IAgentDocument {
   username: string | null;
   passwordHash: string | null;
   lastLoginAt: Date | null;
+  role: AgentRole;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -79,6 +81,12 @@ const agentSchema = new Schema<IAgentDocument>(
     lastLoginAt: {
       type: Date,
       default: null,
+    },
+    role: {
+      type: String,
+      enum: ['agent', 'admin'] satisfies AgentRole[],
+      default: 'agent',
+      index: true,
     },
   },
   {

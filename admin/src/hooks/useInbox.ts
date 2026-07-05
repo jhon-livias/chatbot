@@ -10,6 +10,7 @@ export interface ConversationSummary {
   mode: string
   unreadCountAgent: number
   assignedAgentId: string | null
+  assignedAgentName: string | null
   handoffAt: string | null
   lastUserMessageAt: string | null
   lastAgentMessageAt: string | null

@@ -1,6 +1,11 @@
 import type { ConversationRepository } from '../../../domain/repositories/conversation.repository.js';
 import type { UserRepository } from '../../../domain/repositories/user.repository.js';
-import { assertAgentOwnsConversation, ForbiddenError } from '../../services/conversation-access.service.js';
+import type { AgentRepository } from '../../../domain/repositories/agent.repository.js';
+import type { AgentRole } from '../../../domain/entities/agent.entity.js';
+import {
+  assertCanViewConversation,
+  ForbiddenError,
+} from '../../services/conversation-access.service.js';
 import type { Message } from '../../../domain/entities/message.entity.js';
 import type { FunnelUserMongoRepository } from '../../../infrastructure/database/mongodb/repositories/funnel-user.mongo-repository.js';
 
@@ -9,6 +14,7 @@ export { ForbiddenError };
 export interface GetConversationHistoryInput {
   conversationId: string;
   agentId: string;
+  role?: AgentRole;
   limit?: number | undefined;
 }
 
@@ -30,6 +36,7 @@ export interface GetConversationHistoryOutput {
   mode: string;
   status: string;
   assignedAgentId: string | null;
+  assignedAgentName: string | null;
   unreadCountAgent: number;
   messages: MessageDto[];
 }
@@ -39,6 +46,7 @@ export class GetConversationHistoryUseCase {
     private readonly conversationRepo: ConversationRepository,
     private readonly userRepo: UserRepository,
     private readonly funnelUserRepo: FunnelUserMongoRepository,
+    private readonly agentRepo: AgentRepository,
   ) {}
 
   async execute(input: GetConversationHistoryInput): Promise<GetConversationHistoryOutput> {
@@ -47,7 +55,7 @@ export class GetConversationHistoryUseCase {
       throw new Error('Conversación no encontrada');
     }
 
-    assertAgentOwnsConversation(conversation, input.agentId);
+    assertCanViewConversation(conversation, input.agentId, input.role ?? 'agent');
 
     const msgs: ReadonlyArray<Message> =
       input.limit !== undefined && input.limit > 0
@@ -56,9 +64,12 @@ export class GetConversationHistoryUseCase {
           ? []
           : conversation.messages;
 
-    const [funnelUser, user] = await Promise.all([
+    const [funnelUser, user, assignedAgent] = await Promise.all([
       this.funnelUserRepo.findBySenderId(conversation.phoneNumber),
       this.userRepo.findById(conversation.userId),
+      conversation.assignedAgentId
+        ? this.agentRepo.findById(conversation.assignedAgentId)
+        : Promise.resolve(null),
     ]);
     const contactName = funnelUser?.name ?? user?.name ?? null;
 
@@ -70,6 +81,7 @@ export class GetConversationHistoryUseCase {
       mode: conversation.mode,
       status: conversation.status,
       assignedAgentId: conversation.assignedAgentId,
+      assignedAgentName: assignedAgent?.name ?? null,
       unreadCountAgent: conversation.unreadCountAgent,
       messages: msgs.map((m) => ({
         id: m.id.value,

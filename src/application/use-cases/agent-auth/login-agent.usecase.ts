@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import type { AgentRepository } from '../../../domain/repositories/agent.repository.js';
+import type { AgentRole } from '../../../domain/entities/agent.entity.js';
 
 export interface LoginAgentInput {
   username: string;
@@ -14,6 +15,7 @@ export interface LoginAgentOutput {
     name: string;
     username: string;
     email: string;
+    role: AgentRole;
   };
 }
 
@@ -56,6 +58,7 @@ export class LoginAgentUseCase {
         sub: agent.id,
         username: agent.username,
         name: agent.name,
+        role: agent.role,
       },
       secret,
       { expiresIn } as jwt.SignOptions,
@@ -68,6 +71,7 @@ export class LoginAgentUseCase {
         name: agent.name,
         username: agent.username ?? username,
         email: agent.email,
+        role: agent.role,
       },
     };
   }

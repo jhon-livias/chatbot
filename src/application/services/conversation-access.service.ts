@@ -1,4 +1,5 @@
 import type { Conversation } from '../../domain/entities/conversation.entity.js';
+import type { AgentRole } from '../../domain/entities/agent.entity.js';
 
 export class ForbiddenError extends Error {
   constructor(message = 'Acceso denegado') {
@@ -21,4 +22,14 @@ export function assertAgentOwnsConversation(
   if (conversation.assignedAgentId !== agentId) {
     throw new ForbiddenError('Este chat no está asignado a ti');
   }
+}
+
+/** Admins can read any conversation; agents only their assigned chats. */
+export function assertCanViewConversation(
+  conversation: Conversation,
+  agentId: string,
+  role: AgentRole = 'agent',
+): void {
+  if (role === 'admin') return;
+  assertAgentOwnsConversation(conversation, agentId);
 }

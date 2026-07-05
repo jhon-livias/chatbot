@@ -13,24 +13,24 @@
       "id": 100,
       "options": {
         "mode": "markdown",
-        "content": "# Historial de asesores — Chatbot UPRIT\nAcciones de los asesores en el panel: login, mensajes, devolver al bot, etc. Actualización automática cada 30 s."
+        "content": "# Chats con nombre asignados — Chatbot UPRIT\nLeads identificados por nombre que fueron asignados a un asesor, y mensajes del asesor en esas conversaciones. Solo aparecen entradas donde el contacto tiene nombre (WhatsApp o registro). Hora: **America/Lima**."
       }
     },
     {
       "type": "stat",
-      "title": "Acciones (24 h)",
+      "title": "Asignaciones con nombre (7 d)",
       "gridPos": { "h": 4, "w": 8, "x": 0, "y": 3 },
       "id": 1,
       "datasource": { "type": "loki", "uid": "loki" },
       "targets": [
         {
-          "expr": "sum(count_over_time({container=\"chatbot-uprit-app\", logType=\"agent_audit\"}[24h]))",
+          "expr": "sum(count_over_time({container=\"chatbot-uprit-app\", logType=\"agent_audit\", action=\"conversation_assigned\"} | json | contactName != \"\" [7d]))",
           "refId": "A"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "fixed", "fixedColor": "blue" }
+          "color": { "mode": "fixed", "fixedColor": "orange" }
         },
         "overrides": []
       },
@@ -38,13 +38,13 @@
     },
     {
       "type": "stat",
-      "title": "Mensajes enviados (24 h)",
+      "title": "Mensajes a leads con nombre (7 d)",
       "gridPos": { "h": 4, "w": 8, "x": 8, "y": 3 },
       "id": 2,
       "datasource": { "type": "loki", "uid": "loki" },
       "targets": [
         {
-          "expr": "sum(count_over_time({container=\"chatbot-uprit-app\", logType=\"agent_audit\", action=\"message_sent\"}[24h]))",
+          "expr": "sum(count_over_time({container=\"chatbot-uprit-app\", logType=\"agent_audit\", action=\"message_sent\"} | json | contactName != \"\" [7d]))",
           "refId": "A"
         }
       ],
@@ -58,19 +58,19 @@
     },
     {
       "type": "stat",
-      "title": "Logins exitosos (24 h)",
+      "title": "Cierres / devoluciones (7 d)",
       "gridPos": { "h": 4, "w": 8, "x": 16, "y": 3 },
       "id": 3,
       "datasource": { "type": "loki", "uid": "loki" },
       "targets": [
         {
-          "expr": "sum(count_over_time({container=\"chatbot-uprit-app\", logType=\"agent_audit\", action=\"login_success\"}[24h]))",
+          "expr": "sum(count_over_time({container=\"chatbot-uprit-app\", logType=\"agent_audit\", action=~\"conversation_closed|return_to_bot\"} | json | contactName != \"\" [7d]))",
           "refId": "A"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "fixed", "fixedColor": "purple" }
+          "color": { "mode": "fixed", "fixedColor": "blue" }
         },
         "overrides": []
       },
@@ -78,13 +78,13 @@
     },
     {
       "type": "logs",
-      "title": "Historial de acciones",
-      "gridPos": { "h": 22, "w": 24, "x": 0, "y": 7 },
+      "title": "Asignaciones a asesor (con nombre)",
+      "gridPos": { "h": 14, "w": 24, "x": 0, "y": 7 },
       "id": 4,
       "datasource": { "type": "loki", "uid": "loki" },
       "targets": [
         {
-          "expr": "{container=\"chatbot-uprit-app\", logType=\"agent_audit\"} | json | line_format \"{{if .contactName}}{{.contactName}} ({{.phoneNumber}}){{else}}{{.phoneNumber}}{{end}} — {{.agentName}} ({{.agentUsername}}) — {{.action}} — {{if .contentPreview}}{{.contentPreview}}{{else}}{{.detail}}{{end}}\"",
+          "expr": "{container=\"chatbot-uprit-app\", logType=\"agent_audit\", action=\"conversation_assigned\"} | json | contactName != \"\" | line_format \"{{.contactName}} — {{.phoneNumber}} → {{.agentName}} (handoff: {{.handoffBy}})\"",
           "refId": "A"
         }
       ],
@@ -101,20 +101,20 @@
     },
     {
       "type": "logs",
-      "title": "Solo mensajes enviados",
-      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 29 },
+      "title": "Actividad del asesor en chats con nombre",
+      "gridPos": { "h": 18, "w": 24, "x": 0, "y": 21 },
       "id": 5,
       "datasource": { "type": "loki", "uid": "loki" },
       "targets": [
         {
-          "expr": "{container=\"chatbot-uprit-app\", logType=\"agent_audit\", action=\"message_sent\"} | json",
+          "expr": "{container=\"chatbot-uprit-app\", logType=\"agent_audit\", action=~\"message_sent|return_to_bot|conversation_closed\"} | json | contactName != \"\" | line_format \"{{.contactName}} ({{.phoneNumber}}) — {{.agentName}} — {{.action}} — {{if .contentPreview}}{{.contentPreview}}{{else}}{{.detail}}{{end}}\"",
           "refId": "A"
         }
       ],
       "options": {
         "dedupStrategy": "none",
         "enableLogDetails": true,
-        "prettifyLogMessage": true,
+        "prettifyLogMessage": false,
         "showCommonLabels": false,
         "showLabels": false,
         "showTime": true,
@@ -125,12 +125,12 @@
   ],
   "refresh": "30s",
   "schemaVersion": 39,
-  "tags": ["chatbot", "uprit", "audit", "asesores"],
+  "tags": ["chatbot", "uprit", "asesores", "leads"],
   "templating": { "list": [] },
   "time": { "from": "now-7d", "to": "now" },
   "timepicker": {},
   "timezone": "America/Lima",
-  "title": "Historial de asesores",
-  "uid": "uprit-agent-audit",
+  "title": "Chats con nombre asignados",
+  "uid": "uprit-named-assigned-chats",
   "version": 1
 }

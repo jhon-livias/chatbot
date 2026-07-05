@@ -10,6 +10,9 @@ export interface ConversationRepository {
     opts: { limit: number; offset: number },
   ): Promise<Conversation[]>;
   countHumanByAgentId(agentId: string): Promise<number>;
+  /** All active conversations for admin inbox (no messages loaded). */
+  findAllActiveForInbox(opts: { limit: number; offset: number }): Promise<Conversation[]>;
+  countAllActiveForInbox(): Promise<number>;
   save(conversation: Conversation): Promise<Conversation>;
   delete(id: string): Promise<void>;
 }

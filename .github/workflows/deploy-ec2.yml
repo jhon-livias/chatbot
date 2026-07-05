@@ -89,6 +89,10 @@ jobs:
             echo "WARNING: .env missing — add PRODUCTION_ENV secret or upload manually."
           fi
 
+          npm ci --ignore-scripts
+          (cd admin && npm ci --ignore-scripts)
+          npm run build:all
+
           docker compose build app
           docker compose up -d app
 

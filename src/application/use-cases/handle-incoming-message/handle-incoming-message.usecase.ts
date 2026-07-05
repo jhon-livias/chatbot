@@ -19,6 +19,8 @@ import type {
   HandleIncomingMessageResult,
 } from './handle-incoming-message.dto.js';
 import { formatWhatsAppText } from '../../../infrastructure/webhooks/meta/format-whatsapp-text.js';
+import { logAgentAudit } from '../../../infrastructure/shared/agent-audit.logger.js';
+import { resolveContactName } from '../../../infrastructure/shared/resolve-contact-name.js';
 import { logger } from '../../../infrastructure/shared/logger.js';
 import type { Agent } from '../../../domain/entities/agent.entity.js';
 import type { HandoffBy } from '../../../domain/entities/conversation.entity.js';
@@ -424,6 +426,24 @@ export class HandleIncomingMessageUseCase {
       assignedAgentId: agent?.id ?? null,
       handoffBy: params.handoffBy,
     });
+
+    if (agent && this.funnelUserRepo) {
+      const contactName = await resolveContactName(
+        params.phoneNumberValue,
+        conversation.userId,
+        this.funnelUserRepo,
+        this.userRepo,
+      );
+      logAgentAudit({
+        action: 'conversation_assigned',
+        agentId: agent.id,
+        agentName: agent.name,
+        conversationId: conversation.id,
+        phoneNumber: params.phoneNumberValue,
+        handoffBy: params.handoffBy,
+        ...(contactName ? { contactName } : {}),
+      });
+    }
 
     return {
       conversationId: conversation.id,

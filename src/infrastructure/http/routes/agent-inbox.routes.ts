@@ -13,9 +13,14 @@ import type { FunnelMessageMongoRepository } from '../../database/mongodb/reposi
 import type { UserMongoRepository } from '../../database/mongodb/repositories/user.mongo-repository.js';
 import type { FunnelUserMongoRepository } from '../../database/mongodb/repositories/funnel-user.mongo-repository.js';
 import { logAgentAuditFromRequest, type AgentAuditFields } from '../../shared/agent-audit.logger.js';
+import { resolveContactName } from '../../shared/resolve-contact-name.js';
+import type { UserRepository } from '../../../domain/repositories/user.repository.js';
+import type { AgentRepository } from '../../../domain/repositories/agent.repository.js';
 
 async function auditConversationAction(
   conversationRepo: ConversationRepository,
+  userRepo: UserRepository,
+  funnelUserRepo: FunnelUserMongoRepository,
   req: Request,
   conversationId: string,
   action: 'message_sent' | 'return_to_bot' | 'conversation_closed' | 'access_denied',
@@ -23,7 +28,16 @@ async function auditConversationAction(
 ): Promise<void> {
   const conversation = await conversationRepo.findById(conversationId);
   const auditExtra: Omit<AgentAuditFields, 'action'> = { conversationId, ...extra };
-  if (conversation?.phoneNumber) auditExtra.phoneNumber = conversation.phoneNumber;
+  if (conversation?.phoneNumber) {
+    auditExtra.phoneNumber = conversation.phoneNumber;
+    const contactName = await resolveContactName(
+      conversation.phoneNumber,
+      conversation.userId,
+      funnelUserRepo,
+      userRepo,
+    );
+    if (contactName) auditExtra.contactName = contactName;
+  }
   logAgentAuditFromRequest(req, action, auditExtra);
 }
 
@@ -31,13 +45,14 @@ export function createAgentInboxRouter(
   conversationRepo: ConversationRepository,
   userRepo: UserMongoRepository,
   funnelUserRepo: FunnelUserMongoRepository,
+  agentRepo: AgentRepository,
   messagingProvider: MessagingProviderPort,
   funnelMessageRepo: FunnelMessageMongoRepository,
 ): Router {
   const router = Router();
 
-  const listInbox = new ListAgentInboxUseCase(conversationRepo, userRepo, funnelUserRepo);
-  const getHistory = new GetConversationHistoryUseCase(conversationRepo, userRepo, funnelUserRepo);
+  const listInbox = new ListAgentInboxUseCase(conversationRepo, userRepo, funnelUserRepo, agentRepo);
+  const getHistory = new GetConversationHistoryUseCase(conversationRepo, userRepo, funnelUserRepo, agentRepo);
   const sendMessage = new SendAgentMessageUseCase(conversationRepo, messagingProvider, funnelMessageRepo);
   const markRead = new MarkConversationReadUseCase(conversationRepo);
   const returnToBot = new ReturnConversationToBotUseCase(conversationRepo);
@@ -48,10 +63,11 @@ export function createAgentInboxRouter(
   // GET /api/v1/inbox
   router.get('/api/v1/inbox', async (req: Request, res: Response) => {
     const agentId = req.agent!.id;
+    const role = req.agent!.role;
     const limit = Number(req.query['limit'] ?? 20);
     const offset = Number(req.query['offset'] ?? 0);
 
-    const result = await listInbox.execute({ agentId, limit, offset });
+    const result = await listInbox.execute({ agentId, role, limit, offset });
     res.json(result);
   });
 
@@ -61,11 +77,11 @@ export function createAgentInboxRouter(
     const conversationId = String(req.params['id']);
 
     try {
-      const result = await getHistory.execute({ conversationId, agentId, limit: 0 });
+      const result = await getHistory.execute({ conversationId, agentId, role: req.agent!.role, limit: 0 });
       res.json({ ...result, messages: undefined });
     } catch (err) {
       if (err instanceof ForbiddenError) {
-        await auditConversationAction(conversationRepo, req, conversationId, 'access_denied', {
+        await auditConversationAction(conversationRepo, userRepo, funnelUserRepo, req, conversationId, 'access_denied', {
           detail: err.message,
         });
         res.status(403).json({ error: err.message });
@@ -86,11 +102,11 @@ export function createAgentInboxRouter(
     const limit = req.query['limit'] ? Number(req.query['limit']) : undefined;
 
     try {
-      const result = await getHistory.execute({ conversationId, agentId, limit });
+      const result = await getHistory.execute({ conversationId, agentId, role: req.agent!.role, limit });
       res.json(result);
     } catch (err) {
       if (err instanceof ForbiddenError) {
-        await auditConversationAction(conversationRepo, req, conversationId, 'access_denied', {
+        await auditConversationAction(conversationRepo, userRepo, funnelUserRepo, req, conversationId, 'access_denied', {
           detail: err.message,
         });
         res.status(403).json({ error: err.message });
@@ -117,13 +133,13 @@ export function createAgentInboxRouter(
 
     try {
       const result = await sendMessage.execute({ conversationId, agentId, content });
-      await auditConversationAction(conversationRepo, req, conversationId, 'message_sent', {
+      await auditConversationAction(conversationRepo, userRepo, funnelUserRepo, req, conversationId, 'message_sent', {
         contentPreview: content.trim().slice(0, 120),
       });
       res.status(201).json(result);
     } catch (err) {
       if (err instanceof ForbiddenError) {
-        await auditConversationAction(conversationRepo, req, conversationId, 'access_denied', {
+        await auditConversationAction(conversationRepo, userRepo, funnelUserRepo, req, conversationId, 'access_denied', {
           detail: err.message,
         });
         res.status(403).json({ error: err.message });
@@ -147,7 +163,7 @@ export function createAgentInboxRouter(
       res.json({ success: true });
     } catch (err) {
       if (err instanceof ForbiddenError) {
-        await auditConversationAction(conversationRepo, req, conversationId, 'access_denied', {
+        await auditConversationAction(conversationRepo, userRepo, funnelUserRepo, req, conversationId, 'access_denied', {
           detail: err.message,
         });
         res.status(403).json({ error: err.message });
@@ -164,11 +180,11 @@ export function createAgentInboxRouter(
 
     try {
       await returnToBot.execute({ conversationId, agentId });
-      await auditConversationAction(conversationRepo, req, conversationId, 'return_to_bot');
+      await auditConversationAction(conversationRepo, userRepo, funnelUserRepo, req, conversationId, 'return_to_bot');
       res.json({ success: true, mode: 'bot' });
     } catch (err) {
       if (err instanceof ForbiddenError) {
-        await auditConversationAction(conversationRepo, req, conversationId, 'access_denied', {
+        await auditConversationAction(conversationRepo, userRepo, funnelUserRepo, req, conversationId, 'access_denied', {
           detail: err.message,
         });
         res.status(403).json({ error: err.message });
@@ -185,11 +201,11 @@ export function createAgentInboxRouter(
 
     try {
       await closeConv.execute({ conversationId, agentId });
-      await auditConversationAction(conversationRepo, req, conversationId, 'conversation_closed');
+      await auditConversationAction(conversationRepo, userRepo, funnelUserRepo, req, conversationId, 'conversation_closed');
       res.json({ success: true, status: 'closed' });
     } catch (err) {
       if (err instanceof ForbiddenError) {
-        await auditConversationAction(conversationRepo, req, conversationId, 'access_denied', {
+        await auditConversationAction(conversationRepo, userRepo, funnelUserRepo, req, conversationId, 'access_denied', {
           detail: err.message,
         });
         res.status(403).json({ error: err.message });

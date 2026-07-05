@@ -31,6 +31,12 @@ export class AgentMongoRepository implements AgentRepository {
     return doc ? this.toDomain(doc as LeanAgent) : null;
   }
 
+  async findNamesByIds(ids: string[]): Promise<Map<string, string>> {
+    if (ids.length === 0) return new Map();
+    const docs = await AgentModel.find({ id: { $in: ids } }).select('id name').lean();
+    return new Map(docs.map((d) => [d.id, d.name]));
+  }
+
   async save(agent: Agent): Promise<Agent> {
     const props = agent.toProps();
     await AgentModel.findOneAndUpdate(
@@ -44,6 +50,7 @@ export class AgentMongoRepository implements AgentRepository {
         userId: props.userId,
         username: props.username,
         lastLoginAt: props.lastLoginAt,
+        role: props.role,
         createdAt: props.createdAt,
         updatedAt: props.updatedAt,
       },
@@ -79,6 +86,7 @@ export class AgentMongoRepository implements AgentRepository {
       userId: doc.userId,
       username: doc.username ?? null,
       lastLoginAt: doc.lastLoginAt ?? null,
+      role: (doc.role as 'agent' | 'admin' | undefined) ?? 'agent',
       createdAt: doc.createdAt,
       updatedAt: doc.updatedAt,
     });

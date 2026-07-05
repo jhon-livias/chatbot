@@ -4,6 +4,7 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const E164_REGEX = /^\+[1-9]\d{7,14}$/;
 
 export type AgentStatus = 'Active' | 'Inactive';
+export type AgentRole = 'agent' | 'admin';
 
 export interface AgentProps {
   id: string;
@@ -14,6 +15,7 @@ export interface AgentProps {
   userId: string;
   username: string | null;
   lastLoginAt: Date | null;
+  role: AgentRole;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -31,6 +33,7 @@ export class Agent {
   readonly userId: string;
   readonly username: string | null;
   readonly lastLoginAt: Date | null;
+  readonly role: AgentRole;
   readonly createdAt: Date;
   readonly updatedAt: Date;
 
@@ -43,12 +46,17 @@ export class Agent {
     this.userId = props.userId;
     this.username = props.username ?? null;
     this.lastLoginAt = props.lastLoginAt ?? null;
+    this.role = props.role ?? 'agent';
     this.createdAt = props.createdAt;
     this.updatedAt = props.updatedAt;
   }
 
   get isActive(): boolean {
     return this.status === 'Active';
+  }
+
+  get isAdmin(): boolean {
+    return this.role === 'admin';
   }
 
   static create(props: AgentProps): Agent {
@@ -84,6 +92,7 @@ export class Agent {
       userId: this.userId,
       username: this.username,
       lastLoginAt: this.lastLoginAt,
+      role: this.role,
       createdAt: this.createdAt,
       updatedAt: this.updatedAt,
     };

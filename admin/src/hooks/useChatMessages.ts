@@ -19,6 +19,7 @@ interface ConversationMeta {
   mode: string
   status: string
   assignedAgentId: string | null
+  assignedAgentName: string | null
   unreadCountAgent: number
 }
 
@@ -50,6 +51,7 @@ export function useChatMessages(conversationId: string, pollIntervalMs = 4000) {
           mode: data.mode,
           status: data.status,
           assignedAgentId: data.assignedAgentId,
+          assignedAgentName: data.assignedAgentName ?? null,
           unreadCountAgent: data.unreadCountAgent,
         })
         setError('')

@@ -1,10 +1,12 @@
 import type { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import type { AgentRole } from '../../../domain/entities/agent.entity.js';
 
 export interface AgentJwtPayload {
   sub: string;
   username: string;
   name: string;
+  role?: AgentRole;
 }
 
 export function authenticateAgentJwt(req: Request, res: Response, next: NextFunction): void {
@@ -27,6 +29,7 @@ export function authenticateAgentJwt(req: Request, res: Response, next: NextFunc
       id: payload.sub,
       username: payload.username,
       name: payload.name,
+      role: payload.role ?? 'agent',
     };
     next();
   } catch {

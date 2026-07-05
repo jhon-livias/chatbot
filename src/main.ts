@@ -94,6 +94,7 @@ async function bootstrap(): Promise<void> {
     conversationRepo,
     userRepo,
     funnelUserRepo,
+    agentRepo,
     metaAdapter,
     funnelMessageRepo,
   );

@@ -49,10 +49,12 @@ function ConvItem({
   conv,
   active,
   onClick,
+  showAssignedAgent,
 }: {
   conv: ConversationSummary
   active: boolean
   onClick: () => void
+  showAssignedAgent?: boolean
 }) {
   const hasUnread = conv.unreadCountAgent > 0
   const lastActivity = conv.lastUserMessageAt ?? conv.updatedAt
@@ -85,7 +87,11 @@ function ConvItem({
         </div>
         <div className="dash-conv-row">
           <span className="dash-conv-preview">
-            {conv.mode === 'human' ? 'En atención' : 'En bot'}
+            {conv.mode === 'human'
+              ? showAssignedAgent && conv.assignedAgentName
+                ? `Asignado: ${conv.assignedAgentName}`
+                : 'En atención'
+              : 'En bot'}
           </span>
           {hasUnread && (
             <span className="dash-badge">{conv.unreadCountAgent}</span>
@@ -98,15 +104,17 @@ function ConvItem({
 
 // ─── Chat panel ──────────────────────────────────────────────────────────────
 
-function ChatPanel({ id, onBack }: { id: string; onBack: () => void }) {
+function ChatPanel({ id, onBack, readOnly }: { id: string; onBack: () => void; readOnly?: boolean }) {
   const { messages, meta, loading, error, forbidden, reload } = useChatMessages(id)
   const [text, setText] = useState('')
   const [sending, setSending] = useState(false)
   const [sendError, setSendError] = useState('')
 
   useEffect(() => {
-    api.post(`/api/v1/conversations/${id}/read`, {}).catch(() => void 0)
-  }, [id])
+    if (id && !readOnly) {
+      api.post(`/api/v1/conversations/${id}/read`, {}).catch(() => void 0)
+    }
+  }, [id, readOnly])
 
   async function handleSend(e: FormEvent) {
     e.preventDefault()
@@ -167,11 +175,14 @@ function ChatPanel({ id, onBack }: { id: string; onBack: () => void }) {
           <span className="dash-chat-header-sub">
             {meta?.contactName ? `${meta.phoneNumber} · ` : ''}
             WhatsApp · {meta?.mode === 'human' ? 'Atención humana' : 'Bot'}
+            {meta?.assignedAgentName ? ` · Asesor: ${meta.assignedAgentName}` : ''}
           </span>
         </div>
-        <button className="dash-return-btn" onClick={handleReturnToBot}>
-          Devolver al bot
-        </button>
+        {!readOnly && (
+          <button className="dash-return-btn" onClick={handleReturnToBot}>
+            Devolver al bot
+          </button>
+        )}
       </header>
 
       <div className="dash-messages">
@@ -205,30 +216,37 @@ function ChatPanel({ id, onBack }: { id: string; onBack: () => void }) {
         })}
       </div>
 
-      <form className="dash-input-bar" onSubmit={handleSend}>
-        {sendError && <p className="dash-send-error">{sendError}</p>}
-        <div className="dash-input-row">
-          <input
-            type="text"
-            className="dash-input"
-            placeholder="Escribe un mensaje…"
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            disabled={sending}
-            autoFocus
-          />
-          <button
-            type="submit"
-            className="dash-send-btn"
-            disabled={sending || !text.trim()}
-            title="Enviar"
-          >
-            <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
-              <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
-            </svg>
-          </button>
+      {!readOnly && (
+        <form className="dash-input-bar" onSubmit={handleSend}>
+          {sendError && <p className="dash-send-error">{sendError}</p>}
+          <div className="dash-input-row">
+            <input
+              type="text"
+              className="dash-input"
+              placeholder="Escribe un mensaje…"
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              disabled={sending}
+              autoFocus
+            />
+            <button
+              type="submit"
+              className="dash-send-btn"
+              disabled={sending || !text.trim()}
+              title="Enviar"
+            >
+              <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
+                <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+              </svg>
+            </button>
+          </div>
+        </form>
+      )}
+      {readOnly && (
+        <div className="dash-input-bar" style={{ justifyContent: 'center', color: '#94a3b8', fontSize: '.85rem' }}>
+          Vista de solo lectura (administrador)
         </div>
-      </form>
+      )}
     </div>
   )
 }
@@ -236,7 +254,7 @@ function ChatPanel({ id, onBack }: { id: string; onBack: () => void }) {
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
-  const { agent, logout } = useAuth()
+  const { agent, logout, isAdmin } = useAuth()
   const { id } = useParams<{ id?: string }>()
   const navigate = useNavigate()
   const { conversations, total, loading, error } = useInbox()
@@ -266,7 +284,10 @@ export default function DashboardPage() {
             {total > 0 && <span className="dash-badge dash-badge--header">{total}</span>}
           </div>
           <div className="dash-sidebar-agent">
-            <span className="dash-agent-name">{agent?.name}</span>
+            <span className="dash-agent-name">
+              {agent?.name}
+              {isAdmin && <span style={{ opacity: 0.7, fontSize: '.75rem' }}> · Admin</span>}
+            </span>
             <button className="dash-logout-btn" onClick={logout} title="Cerrar sesión">
               <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
                 <path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/>
@@ -289,7 +310,7 @@ export default function DashboardPage() {
           {!loading && !error && conversations.length === 0 && (
             <li className="dash-conv-empty">
               <span style={{ fontSize: '2rem' }}>📭</span>
-              <span>Sin chats asignados</span>
+              <span>{isAdmin ? 'Sin chats activos' : 'Sin chats asignados'}</span>
             </li>
           )}
           {conversations.map((c) => (
@@ -298,6 +319,7 @@ export default function DashboardPage() {
               conv={c}
               active={c.id === id}
               onClick={() => openChat(c)}
+              showAssignedAgent={isAdmin}
             />
           ))}
         </ul>
@@ -306,7 +328,7 @@ export default function DashboardPage() {
       {/* ── Chat area ── */}
       <main className={`dash-main${hasChatOpen ? '' : ' dash-main--hidden-mobile'}`}>
         {id ? (
-          <ChatPanel id={id} onBack={closeChat} />
+          <ChatPanel id={id} onBack={closeChat} readOnly={isAdmin} />
         ) : (
           <div className="dash-chat-empty">
             <div className="dash-empty-icon">

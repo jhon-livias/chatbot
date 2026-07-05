@@ -1,21 +1,45 @@
 import type { Request, Response } from 'express';
 import type { HandleIncomingMessageUseCase } from '../../../application/use-cases/handle-incoming-message/handle-incoming-message.usecase.js';
+import type { HandleMessageStatusUseCase } from '../../../application/use-cases/handle-message-status/handle-message-status.usecase.js';
 import type {
   MetaWebhookPayload,
   MetaWebhookVerifyQuery,
   ParsedWhatsAppInboundMessage,
+  ParsedWhatsAppStatusUpdate,
 } from './meta-whatsapp.types.js';
 import type { WhatsAppParserService } from './whatsapp-parser.service.js';
 import { logger } from '../../shared/logger.js';
 import { formatMetaApiError } from './meta-api-error.js';
 
 /**
- * HTTP controller for Meta WhatsApp webhook verification and inbound messages.
+ * Example Meta status webhook payload (delivery/read receipts):
+ * ```json
+ * {
+ *   "object": "whatsapp_business_account",
+ *   "entry": [{
+ *     "id": "WABA_ID",
+ *     "changes": [{
+ *       "field": "messages",
+ *       "value": {
+ *         "messaging_product": "whatsapp",
+ *         "metadata": { "display_phone_number": "...", "phone_number_id": "..." },
+ *         "statuses": [{
+ *           "id": "wamid.OUTBOUND_MSG_ID",
+ *           "status": "delivered",
+ *           "timestamp": "1710000000",
+ *           "recipient_id": "51999999999"
+ *         }]
+ *       }
+ *     }]
+ *   }]
+ * }
+ * ```
  */
 export class WhatsAppController {
   constructor(
     private readonly parser: WhatsAppParserService,
     private readonly handleIncomingMessage: HandleIncomingMessageUseCase,
+    private readonly handleMessageStatus: HandleMessageStatusUseCase,
     private readonly verifyToken: string,
   ) {}
 
@@ -40,14 +64,35 @@ export class WhatsAppController {
 
     const payload = req.body as MetaWebhookPayload;
     const inboundMessages = this.parser.parseInboundMessages(payload);
+    const statusUpdates = this.parser.parseStatusUpdates(payload);
 
-    if (!inboundMessages.length) {
-      logger.debug('[WhatsApp] Webhook received with no processable text messages');
+    for (const status of statusUpdates) {
+      void this.dispatchStatusUpdate(status);
+    }
+
+    if (!inboundMessages.length && !statusUpdates.length) {
+      logger.debug('[WhatsApp] Webhook received with no processable messages or statuses');
       return;
     }
 
     for (const message of inboundMessages) {
       void this.dispatchToAiFlow(message);
+    }
+  }
+
+  private async dispatchStatusUpdate(status: ParsedWhatsAppStatusUpdate): Promise<void> {
+    try {
+      await this.handleMessageStatus.execute({
+        externalMessageId: status.externalMessageId,
+        status: status.status,
+        timestampMs: status.timestampMs,
+      });
+    } catch (err) {
+      logger.error('[WhatsApp] Error processing status webhook', {
+        externalMessageId: status.externalMessageId,
+        status: status.status,
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 

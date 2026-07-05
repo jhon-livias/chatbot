@@ -1,5 +1,6 @@
 import { connectMongoDB } from './infrastructure/database/mongodb/connection.js';
 import { ConversationMongoRepository } from './infrastructure/database/mongodb/repositories/conversation.mongo-repository.js';
+import { MessageMongoRepository } from './infrastructure/database/mongodb/repositories/message.mongo-repository.js';
 import { UserMongoRepository } from './infrastructure/database/mongodb/repositories/user.mongo-repository.js';
 import { ProgramMongoRepository } from './infrastructure/database/mongodb/repositories/program.mongo-repository.js';
 import { AgentMongoRepository } from './infrastructure/database/mongodb/repositories/agent.mongo-repository.js';
@@ -17,12 +18,14 @@ import { MetaWhatsAppAdapter } from './infrastructure/webhooks/meta/meta-whatsap
 import { WhatsAppController } from './infrastructure/webhooks/meta/whatsapp.controller.js';
 import { WhatsAppParserService } from './infrastructure/webhooks/meta/whatsapp-parser.service.js';
 import { HandleIncomingMessageUseCase } from './application/use-cases/handle-incoming-message/handle-incoming-message.usecase.js';
+import { HandleMessageStatusUseCase } from './application/use-cases/handle-message-status/handle-message-status.usecase.js';
 import { SystemPromptBuilderService } from './application/services/system-prompt-builder.service.js';
 import { IntentRouterService } from './application/services/intent-router.service.js';
 import { createWebhookRouter } from './infrastructure/http/routes/webhook.routes.js';
 import { createAuthRouter } from './infrastructure/http/routes/auth.routes.js';
 import { createAgentInboxRouter } from './infrastructure/http/routes/agent-inbox.routes.js';
 import { createServer } from './infrastructure/http/server.js';
+import { WebSocketRealtimeAdapter } from './infrastructure/realtime/websocket-realtime.adapter.js';
 import { logger } from './infrastructure/shared/logger.js';
 
 async function bootstrap(): Promise<void> {
@@ -33,7 +36,13 @@ async function bootstrap(): Promise<void> {
     minPoolSize: Number(process.env['MONGODB_MIN_POOL_SIZE'] ?? 2),
   });
 
+  const jwtSecret = process.env['JWT_SECRET'];
+  if (!jwtSecret) {
+    throw new Error('JWT_SECRET environment variable is required');
+  }
+
   const conversationRepo = new ConversationMongoRepository();
+  const messageRepo = new MessageMongoRepository();
   const userRepo = new UserMongoRepository();
   const programRepo = new ProgramMongoRepository();
   const agentRepo = new AgentMongoRepository();
@@ -79,12 +88,16 @@ async function bootstrap(): Promise<void> {
     intentRouter,
     funnelUserRepo,
     funnelMessageRepo,
+    messageRepo,
   );
+
+  const handleMessageStatus = new HandleMessageStatusUseCase(messageRepo);
 
   const whatsAppParser = new WhatsAppParserService();
   const whatsAppController = new WhatsAppController(
     whatsAppParser,
     handleIncomingMessage,
+    handleMessageStatus,
     process.env['META_WEBHOOK_VERIFY_TOKEN'] ?? '',
   );
 
@@ -105,10 +118,16 @@ async function bootstrap(): Promise<void> {
     'http://localhost:5173',
   ];
 
-  createServer(webhookRouter, authRouter, agentInboxRouter, {
+  const { httpServer } = createServer(webhookRouter, authRouter, agentInboxRouter, {
     port: Number(process.env['PORT'] ?? 3000),
     corsOrigins: [...new Set(corsOrigins)],
   });
+
+  const realtime = new WebSocketRealtimeAdapter(httpServer, {
+    jwtSecret,
+    heartbeatMs: Number(process.env['WS_HEARTBEAT_MS'] ?? 30_000),
+  });
+  realtime.start();
 }
 
 bootstrap().catch((err: unknown) => {

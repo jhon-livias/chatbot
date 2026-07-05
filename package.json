@@ -46,6 +46,7 @@
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^8.16.1",
     "pino": "^9.7.0",
+    "ws": "^8.21.0",
     "zod": "^3.25.67"
   },
   "devDependencies": {
@@ -54,6 +55,7 @@
     "@types/handlebars": "^4.0.40",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^24.0.4",
+    "@types/ws": "^8.18.1",
     "@typescript-eslint/eslint-plugin": "^8.34.1",
     "@typescript-eslint/parser": "^8.34.1",
     "eslint": "^9.29.0",

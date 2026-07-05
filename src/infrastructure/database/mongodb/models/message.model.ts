@@ -1,7 +1,7 @@
 import { Schema, model, type Document } from 'mongoose';
 
 export type MessageRole = 'user' | 'assistant' | 'system' | 'agent';
-export type MessageStatus = 'received' | 'processing' | 'sent' | 'failed' | 'read';
+export type MessageStatus = 'received' | 'processing' | 'sent' | 'delivered' | 'failed' | 'read';
 
 export interface MessageDocument extends Document<string> {
   conversationId: string;
@@ -10,6 +10,8 @@ export interface MessageDocument extends Document<string> {
   content: string;
   status: MessageStatus;
   timestamp: Date;
+  deliveredAt?: Date;
+  readAt?: Date;
   metadata?: Record<string, unknown>;
 }
 
@@ -26,10 +28,12 @@ const messageSchema = new Schema<MessageDocument>(
     content: { type: String, required: true },
     status: {
       type: String,
-      enum: ['received', 'processing', 'sent', 'failed', 'read'] satisfies MessageStatus[],
+      enum: ['received', 'processing', 'sent', 'delivered', 'failed', 'read'] satisfies MessageStatus[],
       default: 'received',
     },
     timestamp: { type: Date, required: true, default: Date.now },
+    deliveredAt: { type: Date },
+    readAt: { type: Date },
     metadata: { type: Schema.Types.Mixed },
   },
   {
@@ -39,5 +43,6 @@ const messageSchema = new Schema<MessageDocument>(
 );
 
 messageSchema.index({ conversationId: 1, timestamp: 1 });
+messageSchema.index({ externalId: 1 }, { sparse: true });
 
 export const MessageModel = model<MessageDocument>('Message', messageSchema);

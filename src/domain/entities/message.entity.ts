@@ -1,7 +1,16 @@
 import { MessageId } from '../value-objects/message-id.vo.js';
 
 export type MessageRole = 'user' | 'assistant' | 'system' | 'agent';
-export type MessageStatus = 'received' | 'processing' | 'sent' | 'failed' | 'read';
+export type MessageStatus = 'received' | 'processing' | 'sent' | 'delivered' | 'failed' | 'read';
+
+const STATUS_RANK: Record<MessageStatus, number> = {
+  received: 0,
+  processing: 1,
+  sent: 2,
+  delivered: 3,
+  read: 4,
+  failed: -1,
+};
 
 export interface MessageProps {
   id: MessageId;
@@ -11,11 +20,18 @@ export interface MessageProps {
   content: string;
   status: MessageStatus;
   timestamp: Date;
+  deliveredAt?: Date;
+  readAt?: Date;
   metadata?: Record<string, unknown>;
 }
 
 /**
  * Domain entity representing a message within a conversation.
+ *
+ * WhatsApp-style receipt mapping (admin UI):
+ * - sent      → ✓
+ * - delivered → ✓✓ gray
+ * - read      → ✓✓ blue
  */
 export class Message {
   readonly id: MessageId;
@@ -25,6 +41,8 @@ export class Message {
   readonly content: string;
   readonly status: MessageStatus;
   readonly timestamp: Date;
+  readonly deliveredAt: Date | undefined;
+  readonly readAt: Date | undefined;
   readonly metadata: Record<string, unknown> | undefined;
 
   private constructor(props: MessageProps) {
@@ -35,6 +53,8 @@ export class Message {
     this.content = props.content;
     this.status = props.status;
     this.timestamp = props.timestamp;
+    this.deliveredAt = props.deliveredAt;
+    this.readAt = props.readAt;
     this.metadata = props.metadata;
   }
 
@@ -47,6 +67,43 @@ export class Message {
 
   markAs(status: MessageStatus): Message {
     return Message.create({ ...this.toProps(), status });
+  }
+
+  withExternalId(externalId: string): Message {
+    return new Message({ ...this.toProps(), externalId });
+  }
+
+  /**
+   * Apply Meta webhook status progression. Returns null if status would not advance.
+   */
+  applyStatusUpdate(
+    status: 'sent' | 'delivered' | 'read' | 'failed',
+    timestamp: Date,
+  ): Message | null {
+    if (status === 'failed') {
+      return new Message({ ...this.toProps(), status: 'failed' });
+    }
+
+    const domainStatus: MessageStatus = status;
+    const currentRank = STATUS_RANK[this.status] ?? 0;
+    const newRank = STATUS_RANK[domainStatus] ?? 0;
+    if (newRank <= currentRank) {
+      return null;
+    }
+
+    const props = this.toProps();
+    if (domainStatus === 'delivered') {
+      return new Message({ ...props, status: 'delivered', deliveredAt: timestamp });
+    }
+    if (domainStatus === 'read') {
+      return new Message({
+        ...props,
+        status: 'read',
+        readAt: timestamp,
+        deliveredAt: props.deliveredAt ?? timestamp,
+      });
+    }
+    return new Message({ ...props, status: domainStatus });
   }
 
   isFromUser(): boolean {
@@ -70,6 +127,8 @@ export class Message {
       content: this.content,
       status: this.status,
       timestamp: this.timestamp,
+      ...(this.deliveredAt !== undefined && { deliveredAt: this.deliveredAt }),
+      ...(this.readAt !== undefined && { readAt: this.readAt }),
       ...(this.metadata !== undefined && { metadata: this.metadata }),
     };
   }

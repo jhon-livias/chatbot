@@ -25,6 +25,8 @@ export interface MessageDto {
   status: string;
   timestamp: Date;
   externalId?: string;
+  deliveredAt?: Date;
+  readAt?: Date;
   metadata?: Record<string, unknown>;
 }
 
@@ -90,6 +92,8 @@ export class GetConversationHistoryUseCase {
         status: m.status,
         timestamp: m.timestamp,
         ...(m.externalId !== undefined && { externalId: m.externalId }),
+        ...(m.deliveredAt !== undefined && { deliveredAt: m.deliveredAt }),
+        ...(m.readAt !== undefined && { readAt: m.readAt }),
         ...(m.metadata !== undefined && { metadata: m.metadata }),
       })),
     };

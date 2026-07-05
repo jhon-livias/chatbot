@@ -1,9 +1,11 @@
 import type {
   MetaContact,
   MetaInboundMessage,
+  MetaMessageStatus,
   MetaWebhookPayload,
   MetaWebhookValue,
   ParsedWhatsAppInboundMessage,
+  ParsedWhatsAppStatusUpdate,
 } from './meta-whatsapp.types.js';
 
 /**
@@ -24,6 +26,22 @@ export class WhatsAppParserService {
     }
 
     return messages;
+  }
+
+  parseStatusUpdates(payload: MetaWebhookPayload): ParsedWhatsAppStatusUpdate[] {
+    if (payload.object !== 'whatsapp_business_account') {
+      return [];
+    }
+
+    const statuses: ParsedWhatsAppStatusUpdate[] = [];
+
+    for (const entry of payload.entry) {
+      for (const change of entry.changes) {
+        statuses.push(...this.parseStatusChangeValue(change.value));
+      }
+    }
+
+    return statuses;
   }
 
   parseFirstInboundMessage(payload: MetaWebhookPayload): ParsedWhatsAppInboundMessage | null {
@@ -57,6 +75,27 @@ export class WhatsAppParserService {
         message.type === 'text' && Boolean(message.text?.body),
       )
       .map((message) => this.buildParsedMessage(value, message));
+  }
+
+  private parseStatusChangeValue(value: MetaWebhookValue): ParsedWhatsAppStatusUpdate[] {
+    const inbound = value.statuses;
+    if (!inbound?.length) {
+      return [];
+    }
+
+    return inbound
+      .filter((status): status is MetaMessageStatus =>
+        status.status === 'sent' ||
+        status.status === 'delivered' ||
+        status.status === 'read' ||
+        status.status === 'failed',
+      )
+      .map((status) => ({
+        externalMessageId: status.id,
+        status: status.status,
+        timestampMs: Number.parseInt(status.timestamp, 10) * 1000,
+        recipientId: status.recipient_id,
+      }));
   }
 
   private buildParsedMessage(

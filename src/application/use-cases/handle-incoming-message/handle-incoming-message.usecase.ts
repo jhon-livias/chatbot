@@ -9,6 +9,7 @@ import type { SystemPromptBuilderService } from '../../services/system-prompt-bu
 import type { IntentRouterService } from '../../services/intent-router.service.js';
 import type { FunnelUserMongoRepository } from '../../../infrastructure/database/mongodb/repositories/funnel-user.mongo-repository.js';
 import type { FunnelMessageMongoRepository } from '../../../infrastructure/database/mongodb/repositories/funnel-message.mongo-repository.js';
+import type { MessageRepository } from '../../../domain/repositories/message.repository.js';
 import { PhoneNumber } from '../../../domain/value-objects/phone-number.vo.js';
 import { MessageId } from '../../../domain/value-objects/message-id.vo.js';
 import { User } from '../../../domain/entities/user.entity.js';
@@ -65,6 +66,7 @@ export class HandleIncomingMessageUseCase {
     private readonly intentRouter?: IntentRouterService,
     private readonly funnelUserRepo?: FunnelUserMongoRepository,
     private readonly funnelMessageRepo?: FunnelMessageMongoRepository,
+    private readonly messageRepo?: MessageRepository,
   ) {}
 
   async execute(dto: HandleIncomingMessageDto): Promise<HandleIncomingMessageResult> {
@@ -270,10 +272,17 @@ export class HandleIncomingMessageUseCase {
 
     const replyText = formatWhatsAppText(aiContentClean);
 
-    await this.messagingProvider.sendTextMessage({
+    const sendResult = await this.messagingProvider.sendTextMessage({
       to: phoneNumber.value,
       body: replyText,
     });
+
+    if (this.messageRepo && sendResult.messageId) {
+      const sentMessage = assistantMessage
+        .withExternalId(sendResult.messageId)
+        .markAs('sent');
+      await this.messageRepo.save(sentMessage);
+    }
 
     await this.saveFunnelMessage(funnelUserId, replyText, 'bot');
     if (purchaseCategory) {

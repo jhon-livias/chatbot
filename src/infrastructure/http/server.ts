@@ -1,4 +1,5 @@
 import express, { type Express, type Request, type Response, type NextFunction } from 'express';
+import { createServer as createHttpServer, type Server as HttpServer } from 'node:http';
 import { logger } from '../shared/logger.js';
 import type { Router } from 'express';
 
@@ -7,12 +8,17 @@ export interface ServerOptions {
   corsOrigins: string[];
 }
 
+export interface AppServer {
+  app: Express;
+  httpServer: HttpServer;
+}
+
 export function createServer(
   webhookRouter: Router,
   authRouter: Router,
   agentInboxRouter: Router,
   options: ServerOptions,
-): Express {
+): AppServer {
   const app = express();
 
   app.use(
@@ -54,9 +60,11 @@ export function createServer(
     res.status(500).json({ error: 'Internal Server Error' });
   });
 
-  app.listen(options.port, () => {
+  const httpServer = createHttpServer(app);
+
+  httpServer.listen(options.port, () => {
     logger.info(`[HTTP] Server listening on port ${options.port}`);
   });
 
-  return app;
+  return { app, httpServer };
 }

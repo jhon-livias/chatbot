@@ -57,3 +57,13 @@ export interface ParsedWhatsAppInboundMessage {
   externalMessageId: string;
   timestampMs: number;
 }
+
+/**
+ * Normalized Meta message status update (delivery/read receipts).
+ */
+export interface ParsedWhatsAppStatusUpdate {
+  externalMessageId: string;
+  status: 'sent' | 'delivered' | 'read' | 'failed';
+  timestampMs: number;
+  recipientId: string;
+}

@@ -160,15 +160,19 @@ export class ConversationMongoRepository implements ConversationRepository {
       content: m.content,
       status: m.status,
       timestamp: m.timestamp,
+      deliveredAt: m.deliveredAt,
+      readAt: m.readAt,
       metadata: m.metadata,
     }));
 
     if (messageDocs.length > 0) {
       await MessageModel.bulkWrite(
         messageDocs.map((doc) => {
-          const { externalId, metadata, ...required } = doc;
+          const { externalId, deliveredAt, readAt, metadata, ...required } = doc;
           const $set: Record<string, unknown> = { ...required };
           if (externalId !== undefined) $set['externalId'] = externalId;
+          if (deliveredAt !== undefined) $set['deliveredAt'] = deliveredAt;
+          if (readAt !== undefined) $set['readAt'] = readAt;
           if (metadata !== undefined) $set['metadata'] = metadata;
           return {
             updateOne: {
@@ -202,6 +206,8 @@ export class ConversationMongoRepository implements ConversationRepository {
         content: d.content,
         status: d.status,
         timestamp: d.timestamp,
+        ...(d.deliveredAt !== undefined && { deliveredAt: d.deliveredAt }),
+        ...(d.readAt !== undefined && { readAt: d.readAt }),
         ...(d.metadata !== undefined && { metadata: d.metadata as Record<string, unknown> }),
       }),
     );

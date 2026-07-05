@@ -11,7 +11,6 @@ import { FacultyMongoRepository } from './infrastructure/database/mongodb/reposi
 import { FunnelUserMongoRepository } from './infrastructure/database/mongodb/repositories/funnel-user.mongo-repository.js';
 import { FunnelMessageMongoRepository } from './infrastructure/database/mongodb/repositories/funnel-message.mongo-repository.js';
 import { DeepSeekAdapter } from './infrastructure/ai/deepseek/deepseek.adapter.js';
-import { DeepSeekService } from './infrastructure/ai/deepseek/deepseek.service.js';
 import { loadDeepSeekConfig } from './infrastructure/ai/deepseek/deepseek.config.js';
 import { TemplateService } from './infrastructure/ai/template/template.service.js';
 import { MetaWhatsAppAdapter } from './infrastructure/webhooks/meta/meta-whatsapp.adapter.js';
@@ -21,6 +20,7 @@ import { HandleIncomingMessageUseCase } from './application/use-cases/handle-inc
 import { HandleMessageStatusUseCase } from './application/use-cases/handle-message-status/handle-message-status.usecase.js';
 import { SystemPromptBuilderService } from './application/services/system-prompt-builder.service.js';
 import { IntentRouterService } from './application/services/intent-router.service.js';
+import { RealtimeNotifier } from './application/services/realtime-notifier.service.js';
 import { createWebhookRouter } from './infrastructure/http/routes/webhook.routes.js';
 import { createAuthRouter } from './infrastructure/http/routes/auth.routes.js';
 import { createAgentInboxRouter } from './infrastructure/http/routes/agent-inbox.routes.js';
@@ -37,10 +37,9 @@ async function bootstrap(): Promise<void> {
   });
 
   const jwtSecret = process.env['JWT_SECRET'];
-  if (!jwtSecret) {
-    throw new Error('JWT_SECRET environment variable is required');
-  }
+  if (!jwtSecret) throw new Error('JWT_SECRET environment variable is required');
 
+  // ── Repositories ──────────────────────────────────────────────────────────
   const conversationRepo = new ConversationMongoRepository();
   const messageRepo = new MessageMongoRepository();
   const userRepo = new UserMongoRepository();
@@ -53,14 +52,13 @@ async function bootstrap(): Promise<void> {
   const funnelUserRepo = new FunnelUserMongoRepository();
   const funnelMessageRepo = new FunnelMessageMongoRepository();
 
+  // ── AI ────────────────────────────────────────────────────────────────────
   const deepSeekConfig = loadDeepSeekConfig();
   const templateService = new TemplateService();
   const deepSeekAdapter = new DeepSeekAdapter(deepSeekConfig);
-  const deepSeekService = new DeepSeekService(deepSeekConfig, templateService);
   logger.info('[Bootstrap] AI engine initialized', { model: deepSeekConfig.model });
 
   const promptBuilder = new SystemPromptBuilderService();
-
   const intentRouter = new IntentRouterService(
     deepSeekAdapter,
     programRepo,
@@ -70,6 +68,7 @@ async function bootstrap(): Promise<void> {
     facultyRepo,
   );
 
+  // ── Messaging provider ────────────────────────────────────────────────────
   const metaAdapter = new MetaWhatsAppAdapter({
     token: process.env['META_WHATSAPP_TOKEN'] ?? '',
     phoneNumberId: process.env['META_WHATSAPP_PHONE_NUMBER_ID'] ?? '',
@@ -77,6 +76,14 @@ async function bootstrap(): Promise<void> {
     baseUrl: process.env['META_API_BASE_URL'] ?? 'https://graph.facebook.com',
   });
 
+  // ── Realtime: create adapter first (no httpServer yet), then notifier ─────
+  const realtimeAdapter = new WebSocketRealtimeAdapter({
+    jwtSecret,
+    heartbeatMs: Number(process.env['WS_HEARTBEAT_MS'] ?? 30_000),
+  });
+  const realtimeNotifier = new RealtimeNotifier(realtimeAdapter);
+
+  // ── Use cases ─────────────────────────────────────────────────────────────
   const handleIncomingMessage = new HandleIncomingMessageUseCase(
     conversationRepo,
     userRepo,
@@ -89,10 +96,16 @@ async function bootstrap(): Promise<void> {
     funnelUserRepo,
     funnelMessageRepo,
     messageRepo,
+    realtimeNotifier,
   );
 
-  const handleMessageStatus = new HandleMessageStatusUseCase(messageRepo);
+  const handleMessageStatus = new HandleMessageStatusUseCase(
+    messageRepo,
+    conversationRepo,
+    realtimeNotifier,
+  );
 
+  // ── HTTP + WebSocket ───────────────────────────────────────────────────────
   const whatsAppParser = new WhatsAppParserService();
   const whatsAppController = new WhatsAppController(
     whatsAppParser,
@@ -110,6 +123,7 @@ async function bootstrap(): Promise<void> {
     agentRepo,
     metaAdapter,
     funnelMessageRepo,
+    realtimeNotifier,
   );
 
   const corsOrigins = [
@@ -123,11 +137,8 @@ async function bootstrap(): Promise<void> {
     corsOrigins: [...new Set(corsOrigins)],
   });
 
-  const realtime = new WebSocketRealtimeAdapter(httpServer, {
-    jwtSecret,
-    heartbeatMs: Number(process.env['WS_HEARTBEAT_MS'] ?? 30_000),
-  });
-  realtime.start();
+  // start() receives httpServer now that it's ready
+  realtimeAdapter.start(httpServer);
 }
 
 bootstrap().catch((err: unknown) => {

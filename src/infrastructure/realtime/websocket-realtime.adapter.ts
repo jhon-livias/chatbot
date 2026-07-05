@@ -1,7 +1,7 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import type { Server as HttpServer, IncomingMessage } from 'node:http';
 import jwt from 'jsonwebtoken';
-import type { RealtimePort } from '../../application/ports/realtime.port.js';
+import type { RealtimePort, RealtimeEvent } from '../../application/ports/realtime.port.js';
 import type { AgentJwtPayload } from '../http/middlewares/authenticate-agent-jwt.middleware.js';
 import { logger } from '../shared/logger.js';
 
@@ -12,29 +12,36 @@ const WS_PATH = '/api/v1/ws';
  *
  * ## Authentication
  * Connect with JWT query param: `wss://host/api/v1/ws?token=<JWT>`
- * Same secret as `authenticateAgentJwt` (`JWT_SECRET`). Invalid/missing token → close 4401.
+ * Same secret as `authenticateAgentJwt` (`JWT_SECRET`). Invalid/missing token → HTTP 401.
  *
  * ## Server → Client events
- * | type       | payload |
- * |------------|---------|
- * | `connected`| `{ agentId, username, name, role, heartbeatMs }` — sent once after auth |
- * | `pong`     | `{}` — reply to client `ping` |
- * | `ping`     | `{}` — server heartbeat; client should reply with `ping` or ignore |
- *
- * Phase 4 will add: `message.new`, `message.status`, `conversation.read`, `typing.start`, etc.
+ * | type                | payload |
+ * |---------------------|---------|
+ * | `connected`         | `{ agentId, username, name, role, heartbeatMs }` |
+ * | `pong`              | `{}` — reply to client `ping` |
+ * | `ping`              | `{}` — server heartbeat |
+ * | `message.new`       | `{ conversationId, message: MessageEventData }` |
+ * | `message.status`    | `{ conversationId, messageId, status, deliveredAt?, readAt? }` |
+ * | `conversation.read` | `{ conversationId, unreadCountAgent }` |
  *
  * ## Client → Server events
- * | type  | payload |
- * |-------|---------|
- * | `ping`| `{}` — client heartbeat; server replies `pong` |
+ * | type   | payload |
+ * |--------|---------|
+ * | `ping` | `{}` — client heartbeat; server replies `pong` |
+ *
+ * ## Fan-out rules
+ * - `mode=bot`:   broadcast to all connected sockets.
+ * - `mode=human`: send to assigned agent (all their tabs) + all admin-role sockets.
+ * - Implemented via `broadcastToAll`, `sendToAgent`, `broadcastToAdmins` on this adapter.
  *
  * ## Heartbeat
- * - Interval: `WS_HEARTBEAT_MS` env (default 30_000 ms).
- * - Server sends `{ type: "ping" }` each interval.
- * - Connections with no inbound frame for 2× heartbeat are closed.
+ * - Interval: `WS_HEARTBEAT_MS` env var (default 30 000 ms).
+ * - Server sends `{ type: "ping" }` every interval.
+ * - Connections with no inbound frame for 2 × heartbeat interval are closed.
  *
  * ## Multi-tab
  * Multiple WebSocket connections per `agentId` are allowed (one per browser tab).
+ * Each tab is an independent socket; events are delivered to all open tabs.
  */
 export interface WebSocketRealtimeOptions {
   jwtSecret: string;
@@ -49,32 +56,37 @@ interface ClientState {
   lastActivityAt: number;
 }
 
-type OutboundEvent =
+type InfraOutboundEvent =
   | { type: 'connected'; agentId: string; username: string; name: string; role: string; heartbeatMs: number }
   | { type: 'pong' }
   | { type: 'ping' };
 
+type AnyOutboundEvent = InfraOutboundEvent | RealtimeEvent;
+
 export class WebSocketRealtimeAdapter implements RealtimePort {
   private wss: WebSocketServer | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
-  /** agentId → open sockets (supports multiple tabs per agent) */
+  /** agentId → open sockets (multiple tabs per agent) */
   private readonly connections = new Map<string, Set<WebSocket>>();
   private readonly clientStates = new WeakMap<WebSocket, ClientState>();
   private readonly heartbeatMs: number;
 
-  constructor(
-    private readonly httpServer: HttpServer,
-    private readonly options: WebSocketRealtimeOptions,
-  ) {
+  constructor(private readonly options: WebSocketRealtimeOptions) {
     this.heartbeatMs = options.heartbeatMs ?? Number(process.env['WS_HEARTBEAT_MS'] ?? 30_000);
   }
 
-  start(): void {
+  // ─── RealtimePort ──────────────────────────────────────────────────────────
+
+  /**
+   * Attach the WebSocket server to the HTTP server and begin accepting connections.
+   * Call this after createServer() returns the httpServer.
+   */
+  start(httpServer: HttpServer): void {
     if (this.wss) return;
 
     this.wss = new WebSocketServer({ noServer: true });
 
-    this.httpServer.on('upgrade', (req, socket, head) => {
+    httpServer.on('upgrade', (req, socket, head) => {
       if (!this.isWebSocketPath(req.url)) {
         socket.destroy();
         return;
@@ -140,10 +152,7 @@ export class WebSocketRealtimeAdapter implements RealtimePort {
     this.connections.clear();
 
     await new Promise<void>((resolve) => {
-      if (!this.wss) {
-        resolve();
-        return;
-      }
+      if (!this.wss) { resolve(); return; }
       this.wss.close(() => resolve());
       this.wss = null;
     });
@@ -153,11 +162,45 @@ export class WebSocketRealtimeAdapter implements RealtimePort {
     return this.connections.size;
   }
 
+  /** Send event to all open sockets of a specific agent (all browser tabs). */
+  sendToAgent(agentId: string, event: RealtimeEvent): void {
+    const sockets = this.connections.get(agentId);
+    if (!sockets) return;
+    const payload = JSON.stringify(event);
+    for (const ws of sockets) {
+      this.sendRaw(ws, payload);
+    }
+  }
+
+  /** Send event only to sockets whose JWT role is 'admin'. */
+  broadcastToAdmins(event: RealtimeEvent): void {
+    const payload = JSON.stringify(event);
+    for (const sockets of this.connections.values()) {
+      for (const ws of sockets) {
+        const state = this.clientStates.get(ws);
+        if (state?.role === 'admin') {
+          this.sendRaw(ws, payload);
+        }
+      }
+    }
+  }
+
+  /** Broadcast event to every connected socket regardless of role. */
+  broadcastToAll(event: RealtimeEvent): void {
+    const payload = JSON.stringify(event);
+    for (const sockets of this.connections.values()) {
+      for (const ws of sockets) {
+        this.sendRaw(ws, payload);
+      }
+    }
+  }
+
+  // ─── Private helpers ────────────────────────────────────────────────────────
+
   private isWebSocketPath(url: string | undefined): boolean {
     if (!url) return false;
     try {
-      const pathname = new URL(url, 'http://localhost').pathname;
-      return pathname === WS_PATH;
+      return new URL(url, 'http://localhost').pathname === WS_PATH;
     } catch {
       return url.startsWith(WS_PATH);
     }
@@ -166,8 +209,7 @@ export class WebSocketRealtimeAdapter implements RealtimePort {
   private extractToken(req: IncomingMessage): string | null {
     if (!req.url) return null;
     try {
-      const params = new URL(req.url, 'http://localhost').searchParams;
-      return params.get('token');
+      return new URL(req.url, 'http://localhost').searchParams.get('token');
     } catch {
       return null;
     }
@@ -200,11 +242,7 @@ export class WebSocketRealtimeAdapter implements RealtimePort {
     }
     sockets.add(ws);
 
-    logger.info('[WS] Agent connected', {
-      agentId,
-      username: agent.username,
-      tabs: sockets.size,
-    });
+    logger.info('[WS] Agent connected', { agentId, username: agent.username, role: state.role, tabs: sockets.size });
   }
 
   private unregisterConnection(ws: WebSocket): void {
@@ -214,12 +252,9 @@ export class WebSocketRealtimeAdapter implements RealtimePort {
     const sockets = this.connections.get(state.agentId);
     if (sockets) {
       sockets.delete(ws);
-      if (sockets.size === 0) {
-        this.connections.delete(state.agentId);
-      }
+      if (sockets.size === 0) this.connections.delete(state.agentId);
     }
     this.clientStates.delete(ws);
-
     logger.info('[WS] Agent disconnected', { agentId: state.agentId });
   }
 
@@ -235,10 +270,7 @@ export class WebSocketRealtimeAdapter implements RealtimePort {
     } catch {
       return;
     }
-
-    if (parsed.type === 'ping') {
-      this.send(ws, { type: 'pong' });
-    }
+    if (parsed.type === 'ping') this.send(ws, { type: 'pong' });
   }
 
   private runHeartbeat(): void {
@@ -255,15 +287,18 @@ export class WebSocketRealtimeAdapter implements RealtimePort {
           ws.close(1000, 'Heartbeat timeout');
           continue;
         }
-
         this.send(ws, { type: 'ping' });
       }
     }
   }
 
-  private send(ws: WebSocket, event: OutboundEvent): void {
+  private send(ws: WebSocket, event: AnyOutboundEvent): void {
+    this.sendRaw(ws, JSON.stringify(event));
+  }
+
+  private sendRaw(ws: WebSocket, payload: string): void {
     if (ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify(event));
+      ws.send(payload);
     }
   }
 }

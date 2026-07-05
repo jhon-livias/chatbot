@@ -1,6 +1,7 @@
 import type { ConversationRepository } from '../../../domain/repositories/conversation.repository.js';
 import type { MessagingProviderPort } from '../../ports/messaging-provider.port.js';
 import type { FunnelMessageMongoRepository } from '../../../infrastructure/database/mongodb/repositories/funnel-message.mongo-repository.js';
+import type { RealtimeNotifier } from '../../services/realtime-notifier.service.js';
 import { Message } from '../../../domain/entities/message.entity.js';
 import { MessageId } from '../../../domain/value-objects/message-id.vo.js';
 import {
@@ -28,6 +29,7 @@ export class SendAgentMessageUseCase {
     private readonly conversationRepo: ConversationRepository,
     private readonly messagingProvider: MessagingProviderPort,
     private readonly funnelMessageRepo: FunnelMessageMongoRepository,
+    private readonly realtimeNotifier?: RealtimeNotifier,
   ) {}
 
   async execute(input: SendAgentMessageInput): Promise<SendAgentMessageOutput> {
@@ -73,6 +75,13 @@ export class SendAgentMessageUseCase {
       .withLastAgentMessageAt(now);
 
     await this.conversationRepo.save(updated);
+
+    this.realtimeNotifier?.notifyNewMessage({
+      conversationId: conversation.id,
+      conversationMode: conversation.mode,
+      assignedAgentId: conversation.assignedAgentId,
+      message: agentMsg,
+    });
 
     await this.funnelMessageRepo.saveAgentMessage({
       funnelUserId: conversation.userId,

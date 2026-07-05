@@ -1,4 +1,6 @@
 import type { MessageRepository } from '../../../domain/repositories/message.repository.js';
+import type { ConversationRepository } from '../../../domain/repositories/conversation.repository.js';
+import type { RealtimeNotifier } from '../../services/realtime-notifier.service.js';
 import { logger } from '../../../infrastructure/shared/logger.js';
 
 export interface HandleMessageStatusInput {
@@ -16,9 +18,14 @@ export interface HandleMessageStatusOutput {
 
 /**
  * Processes Meta WhatsApp delivery/read webhook statuses and updates persisted messages.
+ * When a status advances (sent → delivered → read), emits a realtime event to the admin panel.
  */
 export class HandleMessageStatusUseCase {
-  constructor(private readonly messageRepo: MessageRepository) {}
+  constructor(
+    private readonly messageRepo: MessageRepository,
+    private readonly conversationRepo?: ConversationRepository,
+    private readonly realtimeNotifier?: RealtimeNotifier,
+  ) {}
 
   async execute(input: HandleMessageStatusInput): Promise<HandleMessageStatusOutput> {
     const message = await this.messageRepo.findByExternalId(input.externalMessageId);
@@ -54,6 +61,21 @@ export class HandleMessageStatusUseCase {
       status: updatedMessage.status,
       externalMessageId: input.externalMessageId,
     });
+
+    if (this.realtimeNotifier && this.conversationRepo) {
+      const conversation = await this.conversationRepo.findById(updatedMessage.conversationId);
+      if (conversation) {
+        this.realtimeNotifier.notifyMessageStatus({
+          conversationId: conversation.id,
+          conversationMode: conversation.mode,
+          assignedAgentId: conversation.assignedAgentId,
+          messageId: updatedMessage.id.value,
+          status: updatedMessage.status,
+          deliveredAt: updatedMessage.deliveredAt,
+          readAt: updatedMessage.readAt,
+        });
+      }
+    }
 
     return {
       updated: true,

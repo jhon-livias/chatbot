@@ -1,4 +1,5 @@
 import type { ConversationRepository } from '../../../domain/repositories/conversation.repository.js';
+import type { RealtimeNotifier } from '../../services/realtime-notifier.service.js';
 import {
   assertAgentOwnsConversation,
   ForbiddenError,
@@ -12,7 +13,10 @@ export interface MarkConversationReadInput {
 }
 
 export class MarkConversationReadUseCase {
-  constructor(private readonly conversationRepo: ConversationRepository) {}
+  constructor(
+    private readonly conversationRepo: ConversationRepository,
+    private readonly realtimeNotifier?: RealtimeNotifier,
+  ) {}
 
   async execute(input: MarkConversationReadInput): Promise<void> {
     const conversation = await this.conversationRepo.findById(input.conversationId);
@@ -24,5 +28,12 @@ export class MarkConversationReadUseCase {
 
     const updated = conversation.resetUnread();
     await this.conversationRepo.save(updated);
+
+    this.realtimeNotifier?.notifyConversationRead({
+      conversationId: conversation.id,
+      conversationMode: conversation.mode,
+      assignedAgentId: conversation.assignedAgentId,
+      unreadCountAgent: 0,
+    });
   }
 }

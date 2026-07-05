@@ -13,6 +13,7 @@ import type { MessagingProviderPort } from '../../../application/ports/messaging
 import type { FunnelMessageMongoRepository } from '../../database/mongodb/repositories/funnel-message.mongo-repository.js';
 import type { UserMongoRepository } from '../../database/mongodb/repositories/user.mongo-repository.js';
 import type { FunnelUserMongoRepository } from '../../database/mongodb/repositories/funnel-user.mongo-repository.js';
+import type { RealtimeNotifier } from '../../../application/services/realtime-notifier.service.js';
 import { logAgentAuditFromRequest, type AgentAuditFields } from '../../shared/agent-audit.logger.js';
 import { resolveContactName } from '../../shared/resolve-contact-name.js';
 import type { UserRepository } from '../../../domain/repositories/user.repository.js';
@@ -49,13 +50,14 @@ export function createAgentInboxRouter(
   agentRepo: AgentRepository,
   messagingProvider: MessagingProviderPort,
   funnelMessageRepo: FunnelMessageMongoRepository,
+  realtimeNotifier?: RealtimeNotifier,
 ): Router {
   const router = Router();
 
   const listInbox = new ListAgentInboxUseCase(conversationRepo, userRepo, funnelUserRepo, agentRepo);
   const getHistory = new GetConversationHistoryUseCase(conversationRepo, userRepo, funnelUserRepo, agentRepo);
-  const sendMessage = new SendAgentMessageUseCase(conversationRepo, messagingProvider, funnelMessageRepo);
-  const markRead = new MarkConversationReadUseCase(conversationRepo);
+  const sendMessage = new SendAgentMessageUseCase(conversationRepo, messagingProvider, funnelMessageRepo, realtimeNotifier);
+  const markRead = new MarkConversationReadUseCase(conversationRepo, realtimeNotifier);
   const returnToBot = new ReturnConversationToBotUseCase(conversationRepo);
   const takeConversation = new TakeConversationUseCase(conversationRepo, funnelUserRepo);
   const closeConv = new CloseConversationUseCase(conversationRepo);

@@ -10,6 +10,7 @@ import type { IntentRouterService } from '../../services/intent-router.service.j
 import type { FunnelUserMongoRepository } from '../../../infrastructure/database/mongodb/repositories/funnel-user.mongo-repository.js';
 import type { FunnelMessageMongoRepository } from '../../../infrastructure/database/mongodb/repositories/funnel-message.mongo-repository.js';
 import type { MessageRepository } from '../../../domain/repositories/message.repository.js';
+import type { RealtimeNotifier } from '../../services/realtime-notifier.service.js';
 import { PhoneNumber } from '../../../domain/value-objects/phone-number.vo.js';
 import { MessageId } from '../../../domain/value-objects/message-id.vo.js';
 import { User } from '../../../domain/entities/user.entity.js';
@@ -67,6 +68,7 @@ export class HandleIncomingMessageUseCase {
     private readonly funnelUserRepo?: FunnelUserMongoRepository,
     private readonly funnelMessageRepo?: FunnelMessageMongoRepository,
     private readonly messageRepo?: MessageRepository,
+    private readonly realtimeNotifier?: RealtimeNotifier,
   ) {}
 
   async execute(dto: HandleIncomingMessageDto): Promise<HandleIncomingMessageResult> {
@@ -282,6 +284,13 @@ export class HandleIncomingMessageUseCase {
         .withExternalId(sendResult.messageId)
         .markAs('sent');
       await this.messageRepo.save(sentMessage);
+
+      this.realtimeNotifier?.notifyNewMessage({
+        conversationId: conversation.id,
+        conversationMode: conversation.mode,
+        assignedAgentId: conversation.assignedAgentId,
+        message: sentMessage,
+      });
     }
 
     await this.saveFunnelMessage(funnelUserId, replyText, 'bot');
@@ -385,6 +394,13 @@ export class HandleIncomingMessageUseCase {
       .withLastUserMessageAt(new Date(dto.timestamp))
       .incrementUnread();
     await this.conversationRepo.save(conversation);
+
+    this.realtimeNotifier?.notifyNewMessage({
+      conversationId: conversation.id,
+      conversationMode: conversation.mode,
+      assignedAgentId: conversation.assignedAgentId,
+      message: userMessage,
+    });
 
     const funnelUserId = await this.upsertFunnelUser(phoneNumberValue, dto.profileName);
     await this.saveFunnelMessage(funnelUserId, dto.content, 'user');

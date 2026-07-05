@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { api } from '../api/client'
+import { useRealtime } from '../context/RealtimeContext'
+import type { MessageEventData } from '../types/realtime'
 
 export interface ChatMessage {
   id: string
@@ -8,6 +10,8 @@ export interface ChatMessage {
   status: string
   timestamp: string
   externalId?: string
+  deliveredAt?: string
+  readAt?: string
   metadata?: Record<string, unknown>
 }
 
@@ -27,7 +31,36 @@ interface HistoryResponse extends ConversationMeta {
   messages: ChatMessage[]
 }
 
-export function useChatMessages(conversationId: string, pollIntervalMs = 4000) {
+const FALLBACK_POLL_MS = 60_000
+
+function toChatMessage(data: MessageEventData): ChatMessage {
+  return {
+    id: data.id,
+    role: data.role,
+    content: data.content,
+    status: data.status,
+    timestamp: data.timestamp,
+    ...(data.externalId !== undefined && { externalId: data.externalId }),
+    ...(data.deliveredAt !== undefined && { deliveredAt: data.deliveredAt }),
+    ...(data.readAt !== undefined && { readAt: data.readAt }),
+    ...(data.metadata !== undefined && { metadata: data.metadata }),
+  }
+}
+
+function mergeMessages(existing: ChatMessage[], incoming: ChatMessage): ChatMessage[] {
+  const idx = existing.findIndex((m) => m.id === incoming.id)
+  if (idx >= 0) {
+    const next = [...existing]
+    next[idx] = { ...next[idx], ...incoming }
+    return next
+  }
+  return [...existing, incoming]
+}
+
+export function useChatMessages(conversationId: string) {
+  const { connectionState, subscribe } = useRealtime()
+  const wsConnected = connectionState === 'connected'
+
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [meta, setMeta] = useState<ConversationMeta | null>(null)
   const [loading, setLoading] = useState(true)
@@ -72,9 +105,45 @@ export function useChatMessages(conversationId: string, pollIntervalMs = 4000) {
 
   useEffect(() => {
     void fetch(true)
-    const id = setInterval(() => void fetch(false), pollIntervalMs)
+  }, [fetch])
+
+  useEffect(() => {
+    if (wsConnected) return
+    const id = setInterval(() => void fetch(false), FALLBACK_POLL_MS)
     return () => clearInterval(id)
-  }, [fetch, pollIntervalMs])
+  }, [fetch, wsConnected])
+
+  useEffect(() => {
+    return subscribe((event) => {
+      if (event.conversationId !== conversationId) return
+
+      if (event.type === 'message.new') {
+        const msg = toChatMessage(event.message)
+        setMessages((prev) => mergeMessages(prev, msg))
+      }
+
+      if (event.type === 'message.status') {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === event.messageId
+              ? {
+                  ...m,
+                  status: event.status,
+                  ...(event.deliveredAt !== undefined && { deliveredAt: event.deliveredAt }),
+                  ...(event.readAt !== undefined && { readAt: event.readAt }),
+                }
+              : m,
+          ),
+        )
+      }
+
+      if (event.type === 'conversation.read') {
+        setMeta((prev) =>
+          prev ? { ...prev, unreadCountAgent: event.unreadCountAgent } : prev,
+        )
+      }
+    })
+  }, [conversationId, subscribe])
 
   return { messages, meta, loading, error, forbidden, reload: () => void fetch(false) }
 }

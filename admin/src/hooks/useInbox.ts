@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { api } from '../api/client'
+import { useRealtime } from '../context/RealtimeContext'
 
 export interface ConversationSummary {
   id: string
@@ -30,10 +31,16 @@ export type AgentInboxFilter = 'own' | 'bot'
 interface UseInboxOptions {
   isAdmin?: boolean
   agentFilter?: AgentInboxFilter
+  activeConversationId?: string | undefined
 }
 
-export function useInbox(pollIntervalMs = 5000, options: UseInboxOptions = {}) {
-  const { isAdmin = false, agentFilter = 'own' } = options
+const FALLBACK_POLL_MS = 60_000
+
+export function useInbox(options: UseInboxOptions = {}) {
+  const { isAdmin = false, agentFilter = 'own', activeConversationId } = options
+  const { connectionState, subscribe } = useRealtime()
+  const wsConnected = connectionState === 'connected'
+
   const [conversations, setConversations] = useState<ConversationSummary[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -66,9 +73,55 @@ export function useInbox(pollIntervalMs = 5000, options: UseInboxOptions = {}) {
 
   useEffect(() => {
     void fetch(true)
-    const id = setInterval(() => void fetch(false), pollIntervalMs)
+  }, [fetch])
+
+  useEffect(() => {
+    if (wsConnected) return
+    const id = setInterval(() => void fetch(false), FALLBACK_POLL_MS)
     return () => clearInterval(id)
-  }, [fetch, pollIntervalMs])
+  }, [fetch, wsConnected])
+
+  useEffect(() => {
+    return subscribe((event) => {
+      if (event.type === 'conversation.read') {
+        setConversations((prev) =>
+          prev.map((c) =>
+            c.id === event.conversationId
+              ? { ...c, unreadCountAgent: event.unreadCountAgent }
+              : c,
+          ),
+        )
+        return
+      }
+
+      if (event.type === 'message.new') {
+        setConversations((prev) => {
+          const idx = prev.findIndex((c) => c.id === event.conversationId)
+          if (idx < 0) {
+            void fetch(false)
+            return prev
+          }
+
+          const conv = prev[idx]!
+          const isActive = event.conversationId === activeConversationId
+          const isUserMsg = event.message.role === 'user'
+          const updated: ConversationSummary = {
+            ...conv,
+            updatedAt: event.message.timestamp,
+            ...(isUserMsg && { lastUserMessageAt: event.message.timestamp }),
+            ...(!isUserMsg && { lastAgentMessageAt: event.message.timestamp }),
+            unreadCountAgent:
+              isUserMsg && !isActive
+                ? conv.unreadCountAgent + 1
+                : conv.unreadCountAgent,
+          }
+
+          const rest = prev.filter((_, i) => i !== idx)
+          return [updated, ...rest]
+        })
+      }
+    })
+  }, [subscribe, activeConversationId, fetch])
 
   return { conversations, total, loading, error, reload: () => void fetch(false) }
 }

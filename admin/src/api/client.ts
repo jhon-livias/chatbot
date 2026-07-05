@@ -5,8 +5,22 @@ export interface ApiError {
   status: number
 }
 
-function getToken(): string | null {
+export function getToken(): string | null {
   return localStorage.getItem('uprit_agent_token')
+}
+
+/** Build WebSocket URL for /api/v1/ws with JWT query param. */
+export function getWebSocketUrl(token: string): string {
+  const base = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? ''
+  if (base) {
+    const url = new URL(base)
+    url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
+    url.pathname = '/api/v1/ws'
+    url.search = `token=${encodeURIComponent(token)}`
+    return url.toString()
+  }
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  return `${protocol}//${window.location.host}/api/v1/ws?token=${encodeURIComponent(token)}`
 }
 
 function logout(): void {

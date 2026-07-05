@@ -489,7 +489,58 @@ body { min-height: 100dvh; }
 }
 .dash-bubble-sender { font-size: .68rem; font-weight: 600; color: rgba(255,255,255,.55); }
 .dash-bubble-text { font-size: .875rem; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
-.dash-bubble-time { font-size: .68rem; color: rgba(255,255,255,.45); align-self: flex-end; margin-top: .1rem; }
+.dash-bubble-footer {
+  display: flex; align-items: center; justify-content: flex-end;
+  gap: .25rem; margin-top: .1rem;
+}
+.dash-bubble-time { font-size: .68rem; color: rgba(255,255,255,.45); }
+
+/* Message status icons (WhatsApp-style) */
+:root {
+  --wa-check-sent: #8696a0;
+  --wa-check-read: #53bdeb;
+}
+.msg-status { display: inline-flex; align-items: center; line-height: 0; }
+.msg-status--read svg path { fill: var(--wa-check-read); }
+
+/* Connection banner */
+.conn-status--connected {
+  display: flex; align-items: center; justify-content: flex-end;
+  padding: 0 1rem .35rem;
+}
+.conn-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  display: inline-block;
+}
+.conn-dot--green { background: #22c55e; box-shadow: 0 0 6px rgba(34,197,94,.5); }
+
+.conn-banner {
+  display: flex; align-items: center; justify-content: center; gap: .75rem;
+  padding: .45rem 1rem; font-size: .78rem; font-weight: 500;
+  border-bottom: 1px solid var(--dash-border);
+  flex-shrink: 0;
+}
+.conn-banner--connecting {
+  background: rgba(59,130,246,.12); color: #93c5fd;
+}
+.conn-banner--reconnecting {
+  background: rgba(234,179,8,.12); color: #fde047;
+}
+.conn-banner--disconnected {
+  background: rgba(239,68,68,.12); color: #fca5a5;
+  flex-wrap: wrap;
+}
+.conn-sync-hint { opacity: .75; font-weight: 400; }
+.conn-reconnect-btn {
+  background: transparent; border: 1px solid currentColor;
+  color: inherit; border-radius: 6px; padding: .2rem .65rem;
+  font-size: .72rem; cursor: pointer; white-space: nowrap;
+}
+.conn-reconnect-btn:hover { background: rgba(255,255,255,.08); }
+
+@media (prefers-reduced-motion: reduce) {
+  .conn-dot--green { box-shadow: none; }
+}
 
 /* Input bar */
 .dash-input-bar {

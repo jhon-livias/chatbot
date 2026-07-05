@@ -4,6 +4,8 @@ import { useAuth } from '../auth/AuthContext'
 import { useInbox, type AgentInboxFilter, type ConversationSummary } from '../hooks/useInbox'
 import { useChatMessages } from '../hooks/useChatMessages'
 import { api } from '../api/client'
+import MessageBubble from '../components/MessageBubble'
+import ConnectionBanner from '../components/ConnectionBanner'
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -241,26 +243,9 @@ function ChatPanel({
         {error && (
           <div className="alert alert-error" style={{ margin: '1rem' }}>{error}</div>
         )}
-        {messages.map((m) => {
-          const isOut = m.role === 'agent' || m.role === 'assistant'
-          const time = new Date(m.timestamp).toLocaleTimeString('es-PE', {
-            hour: '2-digit', minute: '2-digit',
-          })
-          const LABEL: Record<string, string> = {
-            user: '', assistant: 'Angela', agent: '', system: 'Sistema',
-          }
-          return (
-            <div key={m.id} className={`dash-bubble-row${isOut ? ' dash-bubble-row--out' : ''}`}>
-              <div className={`dash-bubble dash-bubble--${m.role}`}>
-                {LABEL[m.role] && (
-                  <span className="dash-bubble-sender">{LABEL[m.role]}</span>
-                )}
-                <p className="dash-bubble-text">{m.content}</p>
-                <span className="dash-bubble-time">{time}</span>
-              </div>
-            </div>
-          )
-        })}
+        {messages.map((m) => (
+          <MessageBubble key={m.id} message={m} />
+        ))}
       </div>
 
       {!canReply && isBotPreview && (
@@ -310,9 +295,10 @@ export default function DashboardPage() {
   const { id } = useParams<{ id?: string }>()
   const navigate = useNavigate()
   const [agentFilter, setAgentFilter] = useState<AgentInboxFilter>('own')
-  const { conversations, total, loading, error, reload: reloadInbox } = useInbox(5000, {
+  const { conversations, total, loading, error, reload: reloadInbox } = useInbox({
     isAdmin,
     agentFilter: isAdmin ? undefined : agentFilter,
+    activeConversationId: id,
   })
   const [adminFilter, setAdminFilter] = useState<AdminInboxFilter>('all')
 
@@ -371,6 +357,8 @@ export default function DashboardPage() {
             </button>
           </div>
         </header>
+
+        <ConnectionBanner />
 
         {isAdmin ? (
           <div className="dash-filters">

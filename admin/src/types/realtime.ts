@@ -1,0 +1,30 @@
+export type MessageRole = 'user' | 'assistant' | 'system' | 'agent'
+export type MessageStatus = 'received' | 'processing' | 'sent' | 'delivered' | 'failed' | 'read'
+
+export interface MessageEventData {
+  id: string
+  role: MessageRole
+  content: string
+  status: MessageStatus
+  timestamp: string
+  externalId?: string
+  deliveredAt?: string
+  readAt?: string
+  metadata?: Record<string, unknown>
+}
+
+export type RealtimeEvent =
+  | { type: 'message.new'; conversationId: string; message: MessageEventData }
+  | {
+      type: 'message.status'
+      conversationId: string
+      messageId: string
+      status: MessageStatus
+      deliveredAt?: string
+      readAt?: string
+    }
+  | { type: 'conversation.read'; conversationId: string; unreadCountAgent: number }
+
+export type ConnectionState = 'connecting' | 'connected' | 'disconnected' | 'reconnecting'
+
+export type RealtimeEventHandler = (event: RealtimeEvent) => void

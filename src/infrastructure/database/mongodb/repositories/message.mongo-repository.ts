@@ -29,6 +29,11 @@ export class MessageMongoRepository implements MessageRepository {
         externalId: props.externalId,
         role: props.role,
         content: props.content,
+        contentType: props.contentType ?? 'text',
+        mediaUrl: props.mediaUrl,
+        mimeType: props.mimeType,
+        fileName: props.fileName,
+        caption: props.caption,
         status: props.status,
         timestamp: props.timestamp,
         deliveredAt: props.deliveredAt,
@@ -49,10 +54,15 @@ export class MessageMongoRepository implements MessageRepository {
           conversationId: props.conversationId,
           role: props.role,
           content: props.content,
+          contentType: props.contentType ?? 'text',
           status: props.status,
           timestamp: props.timestamp,
         };
         if (props.externalId !== undefined) $set['externalId'] = props.externalId;
+        if (props.mediaUrl !== undefined) $set['mediaUrl'] = props.mediaUrl;
+        if (props.mimeType !== undefined) $set['mimeType'] = props.mimeType;
+        if (props.fileName !== undefined) $set['fileName'] = props.fileName;
+        if (props.caption !== undefined) $set['caption'] = props.caption;
         if (props.deliveredAt !== undefined) $set['deliveredAt'] = props.deliveredAt;
         if (props.readAt !== undefined) $set['readAt'] = props.readAt;
         if (props.metadata !== undefined) $set['metadata'] = props.metadata;
@@ -75,6 +85,11 @@ export class MessageMongoRepository implements MessageRepository {
     externalId?: string;
     role: Message['role'];
     content: string;
+    contentType?: Message['contentType'];
+    mediaUrl?: string;
+    mimeType?: string;
+    fileName?: string;
+    caption?: string;
     status: Message['status'];
     timestamp: Date;
     deliveredAt?: Date;
@@ -87,6 +102,11 @@ export class MessageMongoRepository implements MessageRepository {
       ...(doc.externalId !== undefined && { externalId: doc.externalId }),
       role: doc.role,
       content: doc.content,
+      contentType: doc.contentType ?? 'text',
+      ...(doc.mediaUrl !== undefined && { mediaUrl: doc.mediaUrl }),
+      ...(doc.mimeType !== undefined && { mimeType: doc.mimeType }),
+      ...(doc.fileName !== undefined && { fileName: doc.fileName }),
+      ...(doc.caption !== undefined && { caption: doc.caption }),
       status: doc.status,
       timestamp: doc.timestamp,
       ...(doc.deliveredAt !== undefined && { deliveredAt: doc.deliveredAt }),

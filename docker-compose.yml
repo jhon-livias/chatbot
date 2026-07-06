@@ -6,6 +6,7 @@ networks:
 
 volumes:
   logs-data:
+  uploads-data:
   loki-data:
   grafana-data:
 
@@ -41,6 +42,7 @@ services:
 
     volumes:
       - logs-data:/app/logs
+      - uploads-data:/app/uploads
 
     labels:
       logging: promtail

@@ -3,6 +3,8 @@ import { Schema, model, type HydratedDocument, type Types } from 'mongoose';
 export type FunnelMessageRole = 'user' | 'bot' | 'agent';
 export type FunnelMessageDirection = 'inbound' | 'outbound';
 
+export type FunnelMessageContentType = 'text' | 'image' | 'document' | 'audio' | 'video';
+
 export interface IFunnelMessageDocument {
   _id: Types.ObjectId;
   id: string;
@@ -14,6 +16,8 @@ export interface IFunnelMessageDocument {
   direction: FunnelMessageDirection;
   isAnswered: boolean;
   agentId?: string;
+  contentType?: FunnelMessageContentType;
+  mediaUrl?: string;
 }
 
 export type FunnelMessageDocument = HydratedDocument<IFunnelMessageDocument>;
@@ -38,6 +42,12 @@ const funnelMessageSchema = new Schema<IFunnelMessageDocument>(
     },
     isAnswered: { type: Boolean, default: false },
     agentId: { type: String, default: null, index: true },
+    contentType: {
+      type: String,
+      enum: ['text', 'image', 'document', 'audio', 'video'] satisfies FunnelMessageContentType[],
+      default: null,
+    },
+    mediaUrl: { type: String, default: null },
   },
   {
     versionKey: false,

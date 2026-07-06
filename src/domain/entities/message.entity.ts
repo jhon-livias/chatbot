@@ -2,6 +2,7 @@ import { MessageId } from '../value-objects/message-id.vo.js';
 
 export type MessageRole = 'user' | 'assistant' | 'system' | 'agent';
 export type MessageStatus = 'received' | 'processing' | 'sent' | 'delivered' | 'failed' | 'read';
+export type MessageContentType = 'text' | 'image' | 'document' | 'audio' | 'video' | 'location' | 'interactive';
 
 const STATUS_RANK: Record<MessageStatus, number> = {
   received: 0,
@@ -18,6 +19,11 @@ export interface MessageProps {
   externalId?: string;
   role: MessageRole;
   content: string;
+  contentType?: MessageContentType;
+  mediaUrl?: string;
+  mimeType?: string;
+  fileName?: string;
+  caption?: string;
   status: MessageStatus;
   timestamp: Date;
   deliveredAt?: Date;
@@ -39,6 +45,11 @@ export class Message {
   readonly externalId: string | undefined;
   readonly role: MessageRole;
   readonly content: string;
+  readonly contentType: MessageContentType;
+  readonly mediaUrl: string | undefined;
+  readonly mimeType: string | undefined;
+  readonly fileName: string | undefined;
+  readonly caption: string | undefined;
   readonly status: MessageStatus;
   readonly timestamp: Date;
   readonly deliveredAt: Date | undefined;
@@ -51,6 +62,11 @@ export class Message {
     this.externalId = props.externalId;
     this.role = props.role;
     this.content = props.content;
+    this.contentType = props.contentType ?? 'text';
+    this.mediaUrl = props.mediaUrl;
+    this.mimeType = props.mimeType;
+    this.fileName = props.fileName;
+    this.caption = props.caption;
     this.status = props.status;
     this.timestamp = props.timestamp;
     this.deliveredAt = props.deliveredAt;
@@ -59,8 +75,14 @@ export class Message {
   }
 
   static create(props: MessageProps): Message {
-    if (!props.content.trim()) {
+    const contentType = props.contentType ?? 'text';
+    const isTextType = contentType === 'text';
+    // text messages require non-empty content; media messages may have empty content (caption is optional)
+    if (isTextType && !props.content.trim()) {
       throw new Error('Message content cannot be empty');
+    }
+    if (!isTextType && !props.content.trim() && !props.mediaUrl) {
+      throw new Error('Media message must have either content or mediaUrl');
     }
     return new Message(props);
   }
@@ -125,6 +147,11 @@ export class Message {
       ...(this.externalId !== undefined && { externalId: this.externalId }),
       role: this.role,
       content: this.content,
+      contentType: this.contentType,
+      ...(this.mediaUrl !== undefined && { mediaUrl: this.mediaUrl }),
+      ...(this.mimeType !== undefined && { mimeType: this.mimeType }),
+      ...(this.fileName !== undefined && { fileName: this.fileName }),
+      ...(this.caption !== undefined && { caption: this.caption }),
       status: this.status,
       timestamp: this.timestamp,
       ...(this.deliveredAt !== undefined && { deliveredAt: this.deliveredAt }),

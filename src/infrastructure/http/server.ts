@@ -1,11 +1,15 @@
 import express, { type Express, type Request, type Response, type NextFunction } from 'express';
 import { createServer as createHttpServer, type Server as HttpServer } from 'node:http';
+import path from 'node:path';
 import { logger } from '../shared/logger.js';
 import type { Router } from 'express';
+import { authenticateAgentJwt } from './middlewares/authenticate-agent-jwt.middleware.js';
 
 export interface ServerOptions {
   port: number;
   corsOrigins: string[];
+  /** Absolute path to local media uploads directory (MEDIA_STORAGE_PATH) */
+  mediaStoragePath?: string;
 }
 
 export interface AppServer {
@@ -49,6 +53,28 @@ export function createServer(
   app.get('/health', (_req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
   });
+
+  // Serve local media files — JWT required; path segments validated to prevent traversal
+  const mediaRoot = options.mediaStoragePath ?? process.env['MEDIA_STORAGE_PATH'] ?? '/app/uploads';
+  app.get(
+    '/media/:conversationId/:storageKey',
+    authenticateAgentJwt,
+    (req: Request, res: Response): void => {
+      const { conversationId, storageKey } = req.params as { conversationId: string; storageKey: string };
+      // Reject any segment containing path traversal characters
+      if (/[/\\]/.test(conversationId) || /[/\\]/.test(storageKey)) {
+        res.status(400).json({ error: 'Invalid media path' });
+        return;
+      }
+      const filePath = path.join(mediaRoot, conversationId, storageKey);
+      res.sendFile(filePath, (err) => {
+        if (err) {
+          logger.warn('[Media] File not found', { conversationId, storageKey });
+          res.status(404).json({ error: 'Media not found' });
+        }
+      });
+    },
+  );
 
   // Webhook first — agentInboxRouter applies JWT globally and must not block Meta POST /webhook
   app.use(webhookRouter);

@@ -1,0 +1,53 @@
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
+import { randomUUID } from 'node:crypto';
+import type { MediaStoragePort, SaveMediaOptions, SavedMedia } from '../../application/ports/media-storage.port.js';
+import { logger } from '../shared/logger.js';
+
+const MIME_TO_EXT: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'image/gif': 'gif',
+  'application/pdf': 'pdf',
+  'audio/ogg': 'ogg',
+  'audio/mpeg': 'mp3',
+  'video/mp4': 'mp4',
+};
+
+/**
+ * Saves media files to the local filesystem under MEDIA_STORAGE_PATH.
+ * Files are served via GET /media/:storageKey (JWT-protected route).
+ */
+export class LocalMediaStorage implements MediaStoragePort {
+  private readonly storagePath: string;
+
+  constructor(storagePath?: string) {
+    this.storagePath = storagePath ?? process.env['MEDIA_STORAGE_PATH'] ?? '/app/uploads';
+  }
+
+  async save(buffer: Buffer, options: SaveMediaOptions): Promise<SavedMedia> {
+    const ext = MIME_TO_EXT[options.mimeType] ?? 'bin';
+    const storageKey = `${Date.now()}-${randomUUID()}.${ext}`;
+    const dir = path.join(this.storagePath, options.conversationId);
+
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(path.join(dir, storageKey), buffer);
+
+    logger.debug('[LocalMediaStorage] Saved media', {
+      storageKey,
+      conversationId: options.conversationId,
+      bytes: buffer.length,
+    });
+
+    return {
+      storageKey,
+      publicPath: `/media/${options.conversationId}/${storageKey}`,
+    };
+  }
+
+  /** Returns the absolute filesystem path for a given conversationId + storageKey. */
+  resolvePath(conversationId: string, storageKey: string): string {
+    return path.join(this.storagePath, conversationId, storageKey);
+  }
+}

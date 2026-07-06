@@ -14,6 +14,8 @@ import { DeepSeekAdapter } from './infrastructure/ai/deepseek/deepseek.adapter.j
 import { loadDeepSeekConfig } from './infrastructure/ai/deepseek/deepseek.config.js';
 import { TemplateService } from './infrastructure/ai/template/template.service.js';
 import { MetaWhatsAppAdapter } from './infrastructure/webhooks/meta/meta-whatsapp.adapter.js';
+import { MetaMediaService } from './infrastructure/webhooks/meta/meta-media.service.js';
+import { LocalMediaStorage } from './infrastructure/storage/local-media.storage.js';
 import { WhatsAppController } from './infrastructure/webhooks/meta/whatsapp.controller.js';
 import { WhatsAppParserService } from './infrastructure/webhooks/meta/whatsapp-parser.service.js';
 import { HandleIncomingMessageUseCase } from './application/use-cases/handle-incoming-message/handle-incoming-message.usecase.js';
@@ -68,12 +70,23 @@ async function bootstrap(): Promise<void> {
     facultyRepo,
   );
 
-  // ── Messaging provider ────────────────────────────────────────────────────
-  const metaAdapter = new MetaWhatsAppAdapter({
+  // ── Messaging provider + Media ────────────────────────────────────────────
+  const metaMediaConfig = {
     token: process.env['META_WHATSAPP_TOKEN'] ?? '',
     phoneNumberId: process.env['META_WHATSAPP_PHONE_NUMBER_ID'] ?? '',
     apiVersion: process.env['META_API_VERSION'] ?? 'v20.0',
     baseUrl: process.env['META_API_BASE_URL'] ?? 'https://graph.facebook.com',
+  };
+  const metaMediaService = new MetaMediaService(metaMediaConfig);
+  // localMediaStorage will be injected into use-cases in M2/M3
+  const localMediaStorage = new LocalMediaStorage(
+    process.env['MEDIA_STORAGE_PATH'] ?? '/app/uploads',
+  );
+  void localMediaStorage; // suppress unused-var until M2
+  const metaAdapter = new MetaWhatsAppAdapter(metaMediaConfig, metaMediaService);
+
+  logger.info('[Bootstrap] Media storage initialized', {
+    path: process.env['MEDIA_STORAGE_PATH'] ?? '/app/uploads',
   });
 
   // ── Realtime: create adapter first (no httpServer yet), then notifier ─────
@@ -135,6 +148,7 @@ async function bootstrap(): Promise<void> {
   const { httpServer } = createServer(webhookRouter, authRouter, agentInboxRouter, {
     port: Number(process.env['PORT'] ?? 3000),
     corsOrigins: [...new Set(corsOrigins)],
+    mediaStoragePath: process.env['MEDIA_STORAGE_PATH'] ?? '/app/uploads',
   });
 
   // start() receives httpServer now that it's ready

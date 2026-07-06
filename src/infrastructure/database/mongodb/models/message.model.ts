@@ -2,12 +2,18 @@ import { Schema, model, type Document } from 'mongoose';
 
 export type MessageRole = 'user' | 'assistant' | 'system' | 'agent';
 export type MessageStatus = 'received' | 'processing' | 'sent' | 'delivered' | 'failed' | 'read';
+export type MessageContentType = 'text' | 'image' | 'document' | 'audio' | 'video' | 'location' | 'interactive';
 
 export interface MessageDocument extends Document<string> {
   conversationId: string;
   externalId?: string;
   role: MessageRole;
   content: string;
+  contentType: MessageContentType;
+  mediaUrl?: string;
+  mimeType?: string;
+  fileName?: string;
+  caption?: string;
   status: MessageStatus;
   timestamp: Date;
   deliveredAt?: Date;
@@ -26,6 +32,15 @@ const messageSchema = new Schema<MessageDocument>(
       required: true,
     },
     content: { type: String, required: true },
+    contentType: {
+      type: String,
+      enum: ['text', 'image', 'document', 'audio', 'video', 'location', 'interactive'] satisfies MessageContentType[],
+      default: 'text',
+    },
+    mediaUrl: { type: String },
+    mimeType: { type: String },
+    fileName: { type: String },
+    caption: { type: String },
     status: {
       type: String,
       enum: ['received', 'processing', 'sent', 'delivered', 'failed', 'read'] satisfies MessageStatus[],

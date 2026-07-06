@@ -115,6 +115,7 @@ export class WhatsAppController {
         ...(message.longitude !== undefined && { longitude: message.longitude }),
         ...(message.locationName !== undefined && { locationName: message.locationName }),
         ...(message.locationAddress !== undefined && { locationAddress: message.locationAddress }),
+        ...(message.interactiveReplyId !== undefined && { interactiveReplyId: message.interactiveReplyId }),
       });
 
       logger.info('[WhatsApp] Message processed', {

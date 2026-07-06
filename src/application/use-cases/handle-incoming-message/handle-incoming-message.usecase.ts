@@ -7,7 +7,18 @@ import type { AiProviderPort } from '../../ports/ai-provider.port.js';
 import type { MessagingProviderPort } from '../../ports/messaging-provider.port.js';
 import type { MediaStoragePort } from '../../ports/media-storage.port.js';
 import type { SystemPromptBuilderService } from '../../services/system-prompt-builder.service.js';
-import type { IntentRouterService } from '../../services/intent-router.service.js';
+import type { IntentRouterService, ForcedRoutingGroup } from '../../services/intent-router.service.js';
+import {
+  parseMenuSelection,
+  isMainMenuTrigger,
+  buildMainMenuList,
+  getCampusLocationFromEnv,
+  isInteractiveHandoffEnabled,
+  MENU_ROW_IDS,
+  MENU_INTENT_PHRASES,
+  HANDOFF_BUTTON_IDS,
+  type MenuSelection,
+} from '../../services/bot-menu.service.js';
 import type { FunnelUserMongoRepository } from '../../../infrastructure/database/mongodb/repositories/funnel-user.mongo-repository.js';
 import type { FunnelMessageMongoRepository } from '../../../infrastructure/database/mongodb/repositories/funnel-message.mongo-repository.js';
 import type { MessageRepository } from '../../../domain/repositories/message.repository.js';
@@ -43,7 +54,7 @@ const FALLBACK_SYSTEM_PROMPT =
   'REGLA CRITICA: Cuando no tengas informacion suficiente o el usuario pida hablar con un asesor, tu respuesta debe ser EXCLUSIVAMENTE el token: HANDOFF_TRIGGER — sin ningún texto antes ni después.';
 
 const HANDOFF_CONFIRMATION_MSG =
-  '¿Deseas que te contacte un asesor de admisiones para brindarte información personalizada? (Sí/No)';
+  '¿Deseas que te contacte un asesor de admisiones para brindarte información personalizada?';
 
 const DEFAULT_HANDOFF_TRANSITION_MSG =
   'Te comunico con {agentName}, asesor de admisiones de la UPRIT. En un momento te atiende.';
@@ -60,6 +71,9 @@ const DEFAULT_AUTO_REPLY_UNSUPPORTED_MEDIA =
 // Matches affirmative responses when user confirms wanting an advisor
 const AFFIRMATIVE_PATTERN =
   /\b(s[íi]|si|yes|claro|ok|okay|dale|perfecto|de\s*acuerdo|est[aá]\s*bien|acepto|quiero|as[ií]gname|adelante|afirmativo|por\s*favor|bueno|correcto|exacto|listo)\b/i;
+
+const NEGATIVE_PATTERN =
+  /\b(no|nope|nah|negativo|cancelar|cancel|no\s+gracias)\b/i;
 
 /**
  * Orchestrates inbound WhatsApp messages: persist, call AI, and reply.
@@ -195,6 +209,29 @@ export class HandleIncomingMessageUseCase {
       this.funnelMediaMeta(dto, userMessage.mediaUrl),
     );
 
+    // ── F8: menu list selection → mapped flow ─────────────────────────────
+    const menuSelection = parseMenuSelection(dto.interactiveReplyId);
+    if (menuSelection) {
+      return this.handleMenuSelection({
+        selection: menuSelection,
+        conversation,
+        dto,
+        phoneNumberValue: phoneNumber.value,
+        funnelUserId,
+        userMessage,
+      });
+    }
+
+    // ── F8: main menu (first message or keyword) — layer before AI router ─
+    if (isMainMenuTrigger(dto.content, isFirstMessage)) {
+      return this.sendMainMenu({
+        conversation,
+        phoneNumberValue: phoneNumber.value,
+        funnelUserId,
+        userMessage,
+      });
+    }
+
     // ── F7: explicit brochure request → send PDF or link without AI ────────
     if (
       this.sendProgramBrochure &&
@@ -288,12 +325,9 @@ export class HandleIncomingMessageUseCase {
       conversation = conversation.incrementHandoffs().withHandoffState('pending');
       await this.conversationRepo.save(conversation);
 
-      await this.messagingProvider.sendTextMessage({
-        to: phoneNumber.value,
-        body: HANDOFF_CONFIRMATION_MSG,
-      });
+      const { body: confirmBody } = await this.sendHandoffConfirmation(phoneNumber.value);
 
-      await this.saveFunnelMessage(funnelUserId, HANDOFF_CONFIRMATION_MSG, 'bot');
+      await this.saveFunnelMessage(funnelUserId, confirmBody, 'bot');
       await this.updateFunnelUserStage(funnelUserId, 'DECISION', null);
 
       logger.info('[HandleIncomingMessage] HANDOFF_TRIGGER detected — asking for confirmation', {
@@ -305,31 +339,69 @@ export class HandleIncomingMessageUseCase {
         conversationId: conversation.id,
         userMessageId: userMessage.id.value,
         aiResponseId: '',
-        aiResponseContent: HANDOFF_CONFIRMATION_MSG,
+        aiResponseContent: confirmBody,
       };
     }
 
     // Normal response: save assistant message and reply
+    return this.deliverBotTextResponse({
+      conversation,
+      phoneNumberValue: phoneNumber.value,
+      funnelUserId,
+      userMessage,
+      aiContent: aiContentClean,
+      aiModel,
+      aiTokens,
+      newCareerId,
+      newMetaData,
+      newProgramName,
+      purchaseCategory,
+    });
+  }
+
+  // -----------------------------------------------------------------------
+  // Private helpers
+  // -----------------------------------------------------------------------
+
+  /** Sends the AI-generated text reply, persists state, and notifies realtime. */
+  private async deliverBotTextResponse(params: {
+    conversation: Conversation;
+    phoneNumberValue: string;
+    funnelUserId: string;
+    userMessage: Message;
+    aiContent: string;
+    aiModel: string;
+    aiTokens: number;
+    newCareerId: string | null;
+    newMetaData: Conversation['metaData'];
+    newProgramName: string | null;
+    purchaseCategory: string | null;
+  }): Promise<HandleIncomingMessageResult> {
+    const {
+      conversation, phoneNumberValue, funnelUserId, userMessage,
+      aiContent, aiModel, aiTokens, newCareerId, newMetaData, newProgramName, purchaseCategory,
+    } = params;
+
     const assistantMessage = Message.create({
       id: MessageId.generate(),
       conversationId: conversation.id,
       role: 'assistant',
-      content: aiContentClean,
+      content: aiContent,
       status: 'processing',
       timestamp: new Date(),
       metadata: { model: aiModel, tokens: aiTokens },
     });
 
-    conversation = conversation
+    const updatedConversation = conversation
       .addMessage(assistantMessage)
       .resetHandoffs()
       .withIntentContext(newCareerId, newMetaData, newProgramName);
-    await this.conversationRepo.save(conversation);
+    await this.conversationRepo.save(updatedConversation);
 
-    const replyText = formatWhatsAppText(aiContentClean);
+    const replyText = formatWhatsAppText(aiContent);
 
     const sendResult = await this.messagingProvider.sendTextMessage({
-      to: phoneNumber.value,
+      to: phoneNumberValue,
       body: replyText,
     });
 
@@ -360,8 +432,315 @@ export class HandleIncomingMessageUseCase {
     };
   }
 
+  private async handleMenuSelection(params: {
+    selection: MenuSelection;
+    conversation: Conversation;
+    dto: HandleIncomingMessageDto;
+    phoneNumberValue: string;
+    funnelUserId: string;
+    userMessage: Message;
+  }): Promise<HandleIncomingMessageResult> {
+    const { selection, conversation, phoneNumberValue, funnelUserId, userMessage } = params;
+
+    logger.info('[HandleIncomingMessage] Menu selection', { selection, phone: phoneNumberValue });
+
+    switch (selection) {
+      case MENU_ROW_IDS.CAREERS:
+        return this.handleMenuIntentRoute(
+          conversation, phoneNumberValue, funnelUserId, userMessage,
+          'INFO_PROGRAM', MENU_INTENT_PHRASES[MENU_ROW_IDS.CAREERS],
+        );
+      case MENU_ROW_IDS.ADMISSION:
+        return this.handleMenuIntentRoute(
+          conversation, phoneNumberValue, funnelUserId, userMessage,
+          'ADMISION', MENU_INTENT_PHRASES[MENU_ROW_IDS.ADMISSION],
+        );
+      case MENU_ROW_IDS.HANDOFF:
+        return this.startHandoffConfirmation({
+          conversation,
+          phoneNumberValue,
+          funnelUserId,
+          userMessage,
+        });
+      case MENU_ROW_IDS.LOCATION:
+        return this.sendCampusLocationReply({
+          conversation,
+          phoneNumberValue,
+          funnelUserId,
+          userMessage,
+        });
+    }
+  }
+
+  private async handleMenuIntentRoute(
+    conversation: Conversation,
+    phoneNumberValue: string,
+    funnelUserId: string,
+    userMessage: Message,
+    forcedGroup: ForcedRoutingGroup,
+    intentPhrase: string,
+  ): Promise<HandleIncomingMessageResult> {
+    if (!this.intentRouter) {
+      return this.deliverBotTextResponse({
+        conversation,
+        phoneNumberValue,
+        funnelUserId,
+        userMessage,
+        aiContent: 'En este momento no puedo consultar esa información. Escribe "menu" para ver otras opciones.',
+        aiModel: 'menu-fallback',
+        aiTokens: 0,
+        newCareerId: conversation.careerId,
+        newMetaData: conversation.metaData,
+        newProgramName: conversation.currentProgramName,
+        purchaseCategory: null,
+      });
+    }
+
+    const routerResult = await this.intentRouter.routeForced({
+      messages: conversation.messages,
+      userMessage: intentPhrase,
+      careerId: conversation.careerId,
+      metaData: conversation.metaData,
+      programName: conversation.currentProgramName,
+      forcedGroup,
+    });
+
+    const aiContentClean = routerResult.content
+      .replace(/\s*<<HANDOFF_TRIGGER>>\s*$/g, '')
+      .replace(/\s*HANDOFF_TRIGGER\s*$/g, '')
+      .trim();
+
+    if (this.detectHandoffTrigger(routerResult.content)) {
+      return this.startHandoffConfirmation({
+        conversation,
+        phoneNumberValue,
+        funnelUserId,
+        userMessage,
+      });
+    }
+
+    return this.deliverBotTextResponse({
+      conversation,
+      phoneNumberValue,
+      funnelUserId,
+      userMessage,
+      aiContent: aiContentClean,
+      aiModel: routerResult.model,
+      aiTokens: routerResult.totalTokens,
+      newCareerId: routerResult.newCareerId ?? conversation.careerId,
+      newMetaData: routerResult.newMetaData ?? conversation.metaData,
+      newProgramName: routerResult.newProgramName ?? conversation.currentProgramName,
+      purchaseCategory: routerResult.purchaseCategory,
+    });
+  }
+
+  private async sendMainMenu(params: {
+    conversation: Conversation;
+    phoneNumberValue: string;
+    funnelUserId: string;
+    userMessage: Message;
+  }): Promise<HandleIncomingMessageResult> {
+    const { conversation, phoneNumberValue, funnelUserId, userMessage } = params;
+
+    if (!this.messagingProvider.sendInteractiveList) {
+      logger.warn('[HandleIncomingMessage] sendInteractiveList not available — skipping menu');
+      return this.deliverBotTextResponse({
+        conversation,
+        phoneNumberValue,
+        funnelUserId,
+        userMessage,
+        aiContent: '¡Hola! Soy Angela de UPRIT. Escribe tu consulta y con gusto te ayudo.',
+        aiModel: 'menu-fallback',
+        aiTokens: 0,
+        newCareerId: conversation.careerId,
+        newMetaData: conversation.metaData,
+        newProgramName: conversation.currentProgramName,
+        purchaseCategory: null,
+      });
+    }
+
+    const menuPayload = buildMainMenuList(phoneNumberValue);
+    const sendResult = await this.messagingProvider.sendInteractiveList(menuPayload);
+
+    const summaryContent = `${menuPayload.body} [Menú: Info carreras / Costos / Asesor / Ubicación]`;
+
+    const assistantMessage = Message.create({
+      id: MessageId.generate(),
+      conversationId: conversation.id,
+      externalId: sendResult.messageId,
+      role: 'assistant',
+      content: summaryContent,
+      contentType: 'interactive',
+      status: 'sent',
+      timestamp: new Date(),
+      metadata: { interactiveType: 'list', menu: 'main' },
+    });
+
+    const updatedConversation = conversation.addMessage(assistantMessage);
+    await this.conversationRepo.save(updatedConversation);
+
+    if (this.messageRepo) {
+      await this.messageRepo.save(assistantMessage);
+    }
+
+    this.realtimeNotifier?.notifyNewMessage({
+      conversationId: conversation.id,
+      conversationMode: conversation.mode,
+      assignedAgentId: conversation.assignedAgentId,
+      message: assistantMessage,
+    });
+
+    await this.saveFunnelMessage(funnelUserId, summaryContent, 'bot');
+
+    logger.info('[HandleIncomingMessage] Main menu sent (F8)', { phone: phoneNumberValue });
+
+    return {
+      conversationId: conversation.id,
+      userMessageId: userMessage.id.value,
+      aiResponseId: assistantMessage.id.value,
+      aiResponseContent: summaryContent,
+    };
+  }
+
+  private async sendCampusLocationReply(params: {
+    conversation: Conversation;
+    phoneNumberValue: string;
+    funnelUserId: string;
+    userMessage: Message;
+  }): Promise<HandleIncomingMessageResult> {
+    const { conversation, phoneNumberValue, funnelUserId, userMessage } = params;
+    const campus = getCampusLocationFromEnv();
+
+    if (!this.messagingProvider.sendLocation) {
+      const fallbackText = `Nuestra sede: ${campus.name}, ${campus.address}`;
+      return this.deliverBotTextResponse({
+        conversation,
+        phoneNumberValue,
+        funnelUserId,
+        userMessage,
+        aiContent: fallbackText,
+        aiModel: 'menu-location',
+        aiTokens: 0,
+        newCareerId: conversation.careerId,
+        newMetaData: conversation.metaData,
+        newProgramName: conversation.currentProgramName,
+        purchaseCategory: null,
+      });
+    }
+
+    const sendResult = await this.messagingProvider.sendLocation({
+      to: phoneNumberValue,
+      latitude: campus.latitude,
+      longitude: campus.longitude,
+      name: campus.name,
+      address: campus.address,
+    });
+
+    const summaryContent = `📍 ${campus.name} — ${campus.address}`;
+
+    const assistantMessage = Message.create({
+      id: MessageId.generate(),
+      conversationId: conversation.id,
+      externalId: sendResult.messageId,
+      role: 'assistant',
+      content: summaryContent,
+      contentType: 'location',
+      status: 'sent',
+      timestamp: new Date(),
+      metadata: {
+        latitude: campus.latitude,
+        longitude: campus.longitude,
+        locationName: campus.name,
+        locationAddress: campus.address,
+        menu: 'location',
+      },
+    });
+
+    const updatedConversation = conversation.addMessage(assistantMessage);
+    await this.conversationRepo.save(updatedConversation);
+
+    if (this.messageRepo) {
+      await this.messageRepo.save(assistantMessage);
+    }
+
+    this.realtimeNotifier?.notifyNewMessage({
+      conversationId: conversation.id,
+      conversationMode: conversation.mode,
+      assignedAgentId: conversation.assignedAgentId,
+      message: assistantMessage,
+    });
+
+    await this.saveFunnelMessage(funnelUserId, summaryContent, 'bot');
+
+    return {
+      conversationId: conversation.id,
+      userMessageId: userMessage.id.value,
+      aiResponseId: assistantMessage.id.value,
+      aiResponseContent: summaryContent,
+    };
+  }
+
+  private async startHandoffConfirmation(params: {
+    conversation: Conversation;
+    phoneNumberValue: string;
+    funnelUserId: string;
+    userMessage: Message;
+  }): Promise<HandleIncomingMessageResult> {
+    const { phoneNumberValue, funnelUserId, userMessage } = params;
+
+    const updatedConversation = params.conversation
+      .incrementHandoffs()
+      .withHandoffState('pending');
+    await this.conversationRepo.save(updatedConversation);
+
+    const { body: confirmBody } = await this.sendHandoffConfirmation(phoneNumberValue);
+    await this.saveFunnelMessage(funnelUserId, confirmBody, 'bot');
+    await this.updateFunnelUserStage(funnelUserId, 'DECISION', null);
+
+    logger.info('[HandleIncomingMessage] Handoff confirmation requested (menu/trigger)', {
+      phone: phoneNumberValue,
+    });
+
+    return {
+      conversationId: updatedConversation.id,
+      userMessageId: userMessage.id.value,
+      aiResponseId: '',
+      aiResponseContent: confirmBody,
+    };
+  }
+
+  private async sendHandoffConfirmation(to: string): Promise<{ messageId: string; body: string }> {
+    const prompt = HANDOFF_CONFIRMATION_MSG;
+
+    if (isInteractiveHandoffEnabled() && this.messagingProvider.sendInteractiveButtons) {
+      const result = await this.messagingProvider.sendInteractiveButtons({
+        to,
+        body: prompt,
+        buttons: [
+          { id: HANDOFF_BUTTON_IDS.YES, title: 'Sí' },
+          { id: HANDOFF_BUTTON_IDS.NO, title: 'No' },
+        ],
+      });
+      return { messageId: result.messageId, body: `${prompt} [Botones: Sí / No]` };
+    }
+
+    const result = await this.messagingProvider.sendTextMessage({
+      to,
+      body: `${prompt} (Sí/No)`,
+    });
+    return { messageId: result.messageId, body: `${prompt} (Sí/No)` };
+  }
+
+  private resolveHandoffAffirmative(dto: HandleIncomingMessageDto): boolean {
+    if (dto.interactiveReplyId === HANDOFF_BUTTON_IDS.YES) return true;
+    if (dto.interactiveReplyId === HANDOFF_BUTTON_IDS.NO) return false;
+    const text = (dto.caption?.trim() || dto.content).trim();
+    if (NEGATIVE_PATTERN.test(text)) return false;
+    return AFFIRMATIVE_PATTERN.test(text);
+  }
+
   // -----------------------------------------------------------------------
-  // Private helpers
+  // Private helpers (continued)
   // -----------------------------------------------------------------------
 
   private async handlePendingHandoffReply(
@@ -389,7 +768,7 @@ export class HandleIncomingMessageUseCase {
     );
 
     const replyText = dto.caption?.trim() || dto.content;
-    const isAffirmative = AFFIRMATIVE_PATTERN.test(replyText.trim());
+    const isAffirmative = this.resolveHandoffAffirmative(dto);
 
     if (isAffirmative) {
       const agent = await this.pickAgent();

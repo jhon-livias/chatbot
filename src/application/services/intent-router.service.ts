@@ -22,6 +22,9 @@ export interface IntentRoutingResult {
   purchaseCategory: string | null;
 }
 
+/** Routing groups that can be forced from the bot menu (F8) without running Prompt 1. */
+export type ForcedRoutingGroup = 'INFO_PROGRAM' | 'ADMISION';
+
 /**
  * Prompts 4 (Categoría) and 5 (General) return JSON: {"message":"...","purchaseCategory":"..."}.
  * Extracts both fields safely; falls back to raw text if not JSON.
@@ -264,6 +267,58 @@ export class IntentRouterService {
       ...result,
       newCareerId,
       newMetaData,
+    };
+  }
+
+  /**
+   * F8 — Skip intent detection (Prompt 1) and route directly to a known handler.
+   * Used when the user picks a menu list item with a predefined mapping.
+   */
+  async routeForced(params: {
+    messages: ReadonlyArray<Message>;
+    userMessage: string;
+    careerId: string | null;
+    metaData: ConversationMetaData | null;
+    programName: string | null;
+    forcedGroup: ForcedRoutingGroup;
+  }): Promise<IntentRoutingResult> {
+    const { messages, userMessage, careerId, metaData, programName, forcedGroup } = params;
+
+    const [intentions, prompts, programs, faculties] = await Promise.all([
+      this.funnelIntentionRepo.findActive(),
+      this.promptRepo.findActive(),
+      this.programRepo.findActive(),
+      this.facultyRepo ? this.facultyRepo.findAll() : Promise.resolve([]),
+    ]);
+
+    const fallback = {
+      content: 'Lo siento, no pude obtener esa información en este momento. Escribe "menu" para ver otras opciones.',
+      model: 'menu-forced',
+      totalTokens: 0,
+    };
+
+    let result: IntentRoutingResult;
+
+    switch (forcedGroup) {
+      case 'INFO_PROGRAM':
+        result = await this.handleInfoProgram(
+          messages, userMessage, careerId, programs, prompts, intentions, fallback,
+        );
+        break;
+      case 'ADMISION':
+        result = await this.handleAdmision(
+          messages, userMessage, careerId, programs, prompts, intentions, fallback,
+        );
+        break;
+      default:
+        result = this.fallbackResult(fallback);
+    }
+
+    return {
+      ...result,
+      newCareerId: careerId,
+      newMetaData: metaData,
+      newProgramName: programName,
     };
   }
 

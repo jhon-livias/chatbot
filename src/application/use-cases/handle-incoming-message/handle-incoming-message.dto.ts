@@ -16,6 +16,8 @@ export interface HandleIncomingMessageDto {
   longitude?: number;
   locationName?: string;
   locationAddress?: string;
+  /** button_reply.id or list_reply.id from inbound interactive messages */
+  interactiveReplyId?: string;
 }
 
 export interface HandleIncomingMessageResult {

@@ -126,6 +126,7 @@ export interface ParsedWhatsAppInboundMessage {
   longitude?: number;
   locationName?: string;
   locationAddress?: string;
+  interactiveReplyId?: string;
 }
 
 /**

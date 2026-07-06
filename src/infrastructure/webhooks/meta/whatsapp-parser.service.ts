@@ -146,16 +146,17 @@ export class WhatsAppParserService {
         }
 
         let text: string;
+        let interactiveReplyId: string | undefined;
         switch (interactive.type) {
           case 'button_reply':
-            // Prefer title (human-readable) over id for AI context
-            text = interactive.button_reply?.title ?? interactive.button_reply?.id ?? '[button_reply]';
+            interactiveReplyId = interactive.button_reply?.id;
+            text = interactive.button_reply?.title ?? interactiveReplyId ?? '[button_reply]';
             break;
           case 'list_reply':
-            text = interactive.list_reply?.title ?? interactive.list_reply?.id ?? '[list_reply]';
+            interactiveReplyId = interactive.list_reply?.id;
+            text = interactive.list_reply?.title ?? interactiveReplyId ?? '[list_reply]';
             break;
           case 'nfm_reply':
-            // Normalize form reply body; the full JSON is available in response_json if needed
             text = interactive.nfm_reply?.body ?? '[nfm_reply]';
             break;
           default:
@@ -166,9 +167,15 @@ export class WhatsAppParserService {
           messageId: message.id,
           interactiveType: interactive.type,
           text,
+          interactiveReplyId,
         });
 
-        return { ...base, text, contentType: 'text' };
+        return {
+          ...base,
+          text,
+          contentType: 'text',
+          ...(interactiveReplyId !== undefined && { interactiveReplyId }),
+        };
       }
       case 'sticker':
       case 'video':

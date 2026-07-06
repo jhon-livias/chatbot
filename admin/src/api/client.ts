@@ -86,6 +86,12 @@ export const api = {
   get<T>(path: string): Promise<T> {
     return request<T>(path, { method: 'GET' })
   },
+  patch<T>(path: string, body: unknown): Promise<T> {
+    return request<T>(path, { method: 'PATCH', body: JSON.stringify(body) })
+  },
+  del<T>(path: string): Promise<T> {
+    return request<T>(path, { method: 'DELETE' })
+  },
   postFormData<T>(path: string, formData: FormData): Promise<T> {
     return requestFormData<T>(path, formData)
   },

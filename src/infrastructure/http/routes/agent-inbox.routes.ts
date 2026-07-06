@@ -91,6 +91,23 @@ export function createAgentInboxRouter(
 
   router.use('/api/v1', authenticateAgentJwt);
 
+  // GET /api/v1/agents — admin: list active agents for reassign modal
+  router.get('/api/v1/agents', async (req: Request, res: Response) => {
+    if (req.agent!.role !== 'admin') {
+      res.status(403).json({ error: 'Solo administradores pueden listar agentes' });
+      return;
+    }
+    const agents = await agentRepo.findActive();
+    res.json({
+      agents: agents.map((a) => ({
+        id: a.id,
+        name: a.name,
+        role: a.role,
+        status: a.status,
+      })),
+    });
+  });
+
   // GET /api/v1/inbox — filter=unread|unanswered|own|bot, inboxFilter=own|bot, q=search
   router.get('/api/v1/inbox', async (req: Request, res: Response) => {
     const agentId = req.agent!.id;

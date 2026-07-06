@@ -50,6 +50,9 @@ export interface GetConversationHistoryOutput {
   unreadCountAgent: number;
   csWindowOpen: boolean;
   csWindowExpiresAt: string | null;
+  labels: string[];
+  pinned: boolean;
+  archivedAt: Date | null;
   messages: MessageDto[];
 }
 
@@ -102,6 +105,9 @@ export class GetConversationHistoryUseCase {
       unreadCountAgent: conversation.unreadCountAgent,
       csWindowOpen: csWindow.csWindowOpen,
       csWindowExpiresAt: csWindow.csWindowExpiresAt,
+      labels: conversation.labels,
+      pinned: conversation.pinned,
+      archivedAt: conversation.archivedAt,
       messages: msgs.map((m) => ({
         id: m.id.value,
         role: m.role,

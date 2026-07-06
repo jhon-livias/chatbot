@@ -901,3 +901,204 @@ body { min-height: 100dvh; }
   white-space: nowrap;
   max-width: 200px;
 }
+
+/* ── M7: Internal note bubble ────────────────────────────── */
+.dash-bubble-row--note { display: flex; justify-content: center; }
+.dash-bubble--internal {
+  background: rgba(251,191,36,.14);
+  border: 1px solid rgba(251,191,36,.35);
+  border-radius: 10px;
+  max-width: min(80%, 540px);
+  padding: .55rem .85rem;
+  display: flex; flex-direction: column; gap: .2rem;
+}
+.dash-bubble-note-label {
+  display: inline-flex; align-items: center; gap: .3rem;
+  font-size: .67rem; font-weight: 700;
+  color: #f59e0b; letter-spacing: .04em; text-transform: uppercase;
+}
+.dash-bubble--internal .dash-bubble-text { font-size: .87rem; color: #fde68a; }
+.dash-bubble-time--note { color: rgba(253,230,138,.55); }
+
+/* ── M7: G7 Date separator ───────────────────────────────── */
+.dash-date-sep {
+  display: flex; align-items: center; justify-content: center;
+  margin: .75rem 0 .4rem;
+  font-size: .7rem; font-weight: 600; color: var(--dash-muted);
+  letter-spacing: .04em;
+}
+.dash-date-sep span {
+  background: rgba(255,255,255,.07);
+  border-radius: 8px;
+  padding: .2rem .65rem;
+}
+
+/* ── M7: Label chips ─────────────────────────────────────── */
+.dash-conv-labels {
+  display: flex; flex-wrap: wrap; gap: .25rem;
+  margin-top: .3rem;
+}
+.dash-label-chip {
+  font-size: .62rem; font-weight: 700; letter-spacing: .03em;
+  padding: .1rem .4rem; border-radius: 999px;
+  border: 1px solid transparent;
+  white-space: nowrap; line-height: 1.4;
+}
+
+/* ── M7: Pin icon ────────────────────────────────────────── */
+.dash-pin-icon {
+  display: inline-flex; align-items: center;
+  color: #f59e0b; flex-shrink: 0;
+}
+.dash-pin-icon--header { font-size: .85rem; margin-left: .15rem; }
+.dash-archived-badge {
+  font-size: .6rem; font-weight: 700; letter-spacing: .04em;
+  text-transform: uppercase; color: var(--dash-muted);
+  background: rgba(255,255,255,.08); border-radius: 4px;
+  padding: .1rem .4rem; margin-left: .3rem;
+}
+
+/* ── M7: Archived conv opacity ───────────────────────────── */
+.dash-conv-item--archived { opacity: .55; }
+.dash-conv-item--archived:hover { opacity: .8; }
+
+/* ── M7: Header action buttons ───────────────────────────── */
+.dash-header-actions {
+  display: flex; align-items: center; gap: .25rem;
+  margin-right: .25rem;
+}
+.dash-action-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; border-radius: 7px;
+  background: transparent; border: 1px solid var(--dash-border);
+  color: var(--dash-muted); cursor: pointer;
+  transition: background .15s, color .15s, border-color .15s;
+  flex-shrink: 0;
+}
+.dash-action-btn:hover { background: var(--dash-hover); color: var(--dash-text); }
+.dash-action-btn--active { color: #f59e0b; border-color: rgba(245,158,11,.4); background: rgba(245,158,11,.1); }
+.dash-action-btn--warn { color: #f87171; border-color: rgba(248,113,113,.4); }
+
+/* ── M7: Modal ───────────────────────────────────────────── */
+.dash-modal-overlay {
+  position: fixed; inset: 0; z-index: 200;
+  background: rgba(0,0,0,.55);
+  display: flex; align-items: center; justify-content: center;
+  padding: 1rem;
+}
+.dash-modal {
+  background: #1e1b2e;
+  border: 1px solid var(--dash-border);
+  border-radius: 12px;
+  width: 100%; max-width: 360px;
+  display: flex; flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 16px 48px rgba(0,0,0,.5);
+}
+.dash-modal-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: .85rem 1rem .6rem;
+  border-bottom: 1px solid var(--dash-border);
+}
+.dash-modal-title { font-size: .9rem; font-weight: 700; color: var(--dash-text); }
+.dash-modal-close {
+  background: none; border: none; cursor: pointer;
+  color: var(--dash-muted); font-size: 1rem; line-height: 1; padding: .2rem .35rem;
+  border-radius: 4px;
+}
+.dash-modal-close:hover { color: var(--dash-text); }
+.dash-modal-body { max-height: 280px; overflow-y: auto; }
+.dash-modal-footer {
+  display: flex; gap: .5rem;
+  padding: .75rem 1rem;
+  border-top: 1px solid var(--dash-border);
+}
+.dash-agent-list { list-style: none; padding: .35rem 0; }
+.dash-agent-option {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: .6rem 1rem; cursor: pointer; font-size: .85rem;
+  color: var(--dash-text); transition: background .12s;
+}
+.dash-agent-option:hover { background: var(--dash-hover); }
+.dash-agent-option--selected { background: rgba(124,58,237,.15); color: #c4b5fd; }
+.dash-agent-option-name { font-weight: 500; }
+.dash-agent-option-role {
+  font-size: .68rem; font-weight: 600; color: var(--dash-muted);
+  background: rgba(255,255,255,.07); padding: .1rem .35rem; border-radius: 4px;
+}
+
+/* ── M7: Quick replies popover ───────────────────────────── */
+.dash-qr-popover {
+  position: absolute; bottom: 100%; left: 0; right: 0;
+  background: #1e1b2e;
+  border: 1px solid var(--dash-border);
+  border-radius: 10px 10px 0 0;
+  border-bottom: none;
+  z-index: 50;
+  max-height: 260px;
+  display: flex; flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 -6px 20px rgba(0,0,0,.35);
+}
+.dash-qr-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: .55rem .85rem;
+  font-size: .78rem; font-weight: 700; color: var(--dash-muted);
+  border-bottom: 1px solid var(--dash-border);
+  letter-spacing: .04em; text-transform: uppercase; flex-shrink: 0;
+}
+.dash-qr-list { list-style: none; overflow-y: auto; flex: 1; }
+.dash-qr-item {
+  display: flex; flex-direction: column; gap: .15rem;
+  padding: .55rem .85rem; cursor: pointer;
+  border-bottom: 1px solid var(--dash-border);
+  transition: background .12s;
+}
+.dash-qr-item:hover { background: var(--dash-hover); }
+.dash-qr-title { font-size: .8rem; font-weight: 600; color: var(--dash-text); }
+.dash-qr-preview { font-size: .74rem; color: var(--dash-muted); }
+
+/* ── M7: Composer modes (message vs note) ────────────────── */
+.dash-composer-modes {
+  display: flex; gap: .3rem;
+  margin-bottom: .25rem;
+}
+.dash-mode-btn {
+  padding: .28rem .7rem; font-size: .72rem; font-weight: 600;
+  background: transparent; border: 1px solid var(--dash-border);
+  border-radius: 999px; cursor: pointer; color: var(--dash-muted);
+  transition: background .15s, color .15s;
+}
+.dash-mode-btn:hover { background: var(--dash-hover); color: var(--dash-text); }
+.dash-mode-btn--active { color: #fff; background: var(--dash-accent); border-color: var(--dash-accent); }
+.dash-mode-btn--note.dash-mode-btn--active { background: rgba(251,191,36,.2); border-color: rgba(251,191,36,.5); color: #fbbf24; }
+.dash-input--note {
+  border-color: rgba(251,191,36,.4) !important;
+  background: rgba(251,191,36,.06) !important;
+}
+.dash-input--note::placeholder { color: rgba(251,191,36,.5); }
+.dash-send-btn--note { background: #d97706 !important; }
+.dash-send-btn--note:hover:not(:disabled) { background: #b45309 !important; }
+
+/* ── M7: Attach btn active state ─────────────────────────── */
+.dash-attach-btn--active {
+  background: var(--dash-hover);
+  color: var(--dash-text);
+  border-color: rgba(255,255,255,.2);
+}
+
+/* ── M7: Archived toggle row ─────────────────────────────── */
+.dash-archived-row {
+  padding: .3rem 1rem .2rem;
+  border-bottom: 1px solid var(--dash-border);
+}
+.dash-archived-label {
+  display: flex; align-items: center; gap: .45rem;
+  font-size: .75rem; color: var(--dash-muted); cursor: pointer;
+  user-select: none;
+}
+.dash-archived-label input[type=checkbox] { accent-color: var(--dash-accent); }
+.dash-archived-label:hover { color: var(--dash-text); }
+
+/* ── M7: Relative container for QR popover ───────────────── */
+.dash-input-bar { position: relative; }

@@ -17,6 +17,9 @@ export interface ConversationSummary {
   lastAgentMessageAt: string | null
   csWindowOpen: boolean
   csWindowExpiresAt: string | null
+  labels: string[]
+  pinned: boolean
+  archivedAt: string | null
   updatedAt: string
   createdAt: string
   lastMessagePreview?: string
@@ -37,6 +40,8 @@ interface UseInboxOptions {
   agentFilter?: AgentInboxFilter
   listFilter?: InboxListFilter
   searchQuery?: string
+  label?: string
+  includeArchived?: boolean
   activeConversationId?: string | undefined
 }
 
@@ -48,6 +53,8 @@ export function useInbox(options: UseInboxOptions = {}) {
     agentFilter = 'own',
     listFilter = 'all',
     searchQuery = '',
+    label = '',
+    includeArchived = false,
     activeConversationId,
   } = options
   const { connectionState, subscribe } = useRealtime()
@@ -79,6 +86,14 @@ export function useInbox(options: UseInboxOptions = {}) {
           params.set('q', searchQuery.trim())
         }
 
+        if (label.trim()) {
+          params.set('label', label.trim())
+        }
+
+        if (includeArchived) {
+          params.set('includeArchived', 'true')
+        }
+
         const qs = params.toString()
         const data = await api.get<InboxResponse>(`/api/v1/inbox${qs ? `?${qs}` : ''}`)
         setConversations(data.conversations)
@@ -90,7 +105,7 @@ export function useInbox(options: UseInboxOptions = {}) {
         if (initial) setLoading(false)
       }
     },
-    [isAdmin, agentFilter, listFilter, searchQuery],
+    [isAdmin, agentFilter, listFilter, searchQuery, label, includeArchived],
   )
 
   useEffect(() => {

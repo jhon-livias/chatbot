@@ -1,4 +1,4 @@
-export type MessageRole = 'user' | 'assistant' | 'system' | 'agent'
+export type MessageRole = 'user' | 'assistant' | 'system' | 'agent' | 'internal'
 export type MessageStatus = 'received' | 'processing' | 'sent' | 'delivered' | 'failed' | 'read'
 
 export interface MessageEventData {

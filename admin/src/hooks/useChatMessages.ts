@@ -5,7 +5,7 @@ import type { MessageEventData } from '../types/realtime'
 
 export interface ChatMessage {
   id: string
-  role: 'user' | 'assistant' | 'agent' | 'system'
+  role: 'user' | 'assistant' | 'agent' | 'system' | 'internal'
   content: string
   contentType?: string
   mediaUrl?: string
@@ -32,6 +32,9 @@ interface ConversationMeta {
   unreadCountAgent: number
   csWindowOpen: boolean
   csWindowExpiresAt: string | null
+  labels: string[]
+  pinned: boolean
+  archivedAt: string | null
 }
 
 interface HistoryResponse extends ConversationMeta {
@@ -113,6 +116,9 @@ export function useChatMessages(conversationId: string) {
           const histData = data as typeof data & {
             csWindowOpen?: boolean
             csWindowExpiresAt?: string | null
+            labels?: string[]
+            pinned?: boolean
+            archivedAt?: string | null
           }
           setMeta({
             conversationId: data.conversationId,
@@ -126,6 +132,9 @@ export function useChatMessages(conversationId: string) {
             unreadCountAgent: data.unreadCountAgent,
             csWindowOpen: histData.csWindowOpen ?? true,
             csWindowExpiresAt: histData.csWindowExpiresAt ?? null,
+            labels: histData.labels ?? [],
+            pinned: histData.pinned ?? false,
+            archivedAt: histData.archivedAt ?? null,
           })
         }
 
@@ -227,6 +236,7 @@ export function useChatMessages(conversationId: string) {
   return {
     messages,
     meta,
+    setMeta,
     loading,
     error,
     forbidden,

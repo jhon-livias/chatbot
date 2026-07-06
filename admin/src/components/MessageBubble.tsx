@@ -49,6 +49,30 @@ function LocationContent({ message: m }: { message: ChatMessage }) {
 function MediaContent({ message: m }: { message: ChatMessage }) {
   const isImage = m.contentType === 'image'
   const isDoc = m.contentType === 'document'
+  const isAudio = m.contentType === 'audio'
+  const isVideo = m.contentType === 'video'
+
+  if (isAudio && m.mediaUrl) {
+    return (
+      <div className="dash-bubble-audio">
+        <audio controls preload="none" src={m.mediaUrl} className="dash-bubble-audio-player">
+          Tu navegador no soporta audio HTML5.
+        </audio>
+        {m.caption && <span className="dash-bubble-caption">{m.caption}</span>}
+      </div>
+    )
+  }
+
+  if (isVideo && m.mediaUrl) {
+    return (
+      <div className="dash-bubble-video">
+        <video controls preload="none" src={m.mediaUrl} className="dash-bubble-video-player">
+          Tu navegador no soporta video HTML5.
+        </video>
+        {m.caption && <span className="dash-bubble-caption">{m.caption}</span>}
+      </div>
+    )
+  }
 
   if (isImage && m.mediaUrl) {
     return (
@@ -87,7 +111,12 @@ export default function MessageBubble({ message: m }: Props) {
     minute: '2-digit',
   })
   const senderLabel = ROLE_LABEL[m.role]
-  const hasMedia = (m.contentType === 'image' || m.contentType === 'document') && m.mediaUrl
+  const hasMedia = (
+    m.contentType === 'image' ||
+    m.contentType === 'document' ||
+    m.contentType === 'audio' ||
+    m.contentType === 'video'
+  ) && m.mediaUrl
   const showText = !hasMedia && !isLocation && !!m.content
 
   if (isInternal) {

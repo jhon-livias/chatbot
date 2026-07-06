@@ -1014,7 +1014,8 @@ export class HandleIncomingMessageUseCase {
     dto: HandleIncomingMessageDto,
   ): Promise<{ mediaUrl?: string; mimeType?: string }> {
     const contentType = dto.contentType ?? 'text';
-    if (contentType !== 'image' && contentType !== 'document') {
+    const DOWNLOADABLE = new Set(['image', 'document', 'audio', 'video']);
+    if (!DOWNLOADABLE.has(contentType)) {
       return { ...(dto.mimeType !== undefined && { mimeType: dto.mimeType }) };
     }
     if (!dto.mediaId || !this.metaMediaService || !this.mediaStorage) {

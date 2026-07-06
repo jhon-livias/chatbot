@@ -80,26 +80,43 @@ export class SendAgentMessageUseCase {
     let fileName: string | undefined;
 
     if (hasFile && input.fileBuffer && input.mimeType) {
-      contentType = input.contentType ?? (input.mimeType.startsWith('image/') ? 'image' : 'document');
-      mimeType = input.mimeType;
+      const mime = input.mimeType;
+      if (input.contentType) {
+        contentType = input.contentType;
+      } else if (mime.startsWith('image/')) {
+        contentType = 'image';
+      } else if (mime.startsWith('audio/')) {
+        contentType = 'audio';
+      } else if (mime.startsWith('video/')) {
+        contentType = 'video';
+      } else {
+        contentType = 'document';
+      }
+      mimeType = mime;
       fileName = input.fileName;
       messageContent = caption || input.fileName || `[${contentType}]`;
 
-      const { mediaId } = await this.metaMediaService.uploadMedia(input.fileBuffer, input.mimeType);
+      const { mediaId } = await this.metaMediaService.uploadMedia(input.fileBuffer, mime);
 
       const saved = await this.mediaStorage.save(input.fileBuffer, {
-        mimeType: input.mimeType,
+        mimeType: mime,
         conversationId: conversation.id,
         ...(input.fileName !== undefined && { originalName: input.fileName }),
       });
       mediaUrl = saved.publicPath;
 
-      const waType = contentType === 'document' ? 'document' : 'image';
+      // Map domain contentType to Meta media type
+      const waType: 'image' | 'document' | 'audio' | 'video' =
+        contentType === 'audio' ? 'audio'
+        : contentType === 'video' ? 'video'
+        : contentType === 'image' ? 'image'
+        : 'document';
+
       const result = await this.messagingProvider.sendMediaMessage({
         to: conversation.phoneNumber,
         type: waType,
         mediaId,
-        ...(caption && { caption }),
+        ...(caption && contentType !== 'audio' && { caption }),
         ...(contentType === 'document' && input.fileName && { fileName: input.fileName }),
       });
       resultMessageId = result.messageId;

@@ -177,20 +177,30 @@ export class WhatsAppParserService {
           ...(interactiveReplyId !== undefined && { interactiveReplyId }),
         };
       }
-      case 'sticker':
-      case 'video':
-      case 'audio': {
+      case 'audio':
+      case 'video': {
         const media = message[message.type];
-        logger.debug('[WhatsApp] Unsupported media type received (M11)', {
-          type: message.type,
-          mediaId: media?.id,
-          mimeType: media?.mime_type,
-        });
         if (!media?.id) return null;
+        logger.debug('[WhatsApp] Audio/video inbound (A4/A5)', {
+          type: message.type,
+          mediaId: media.id,
+          mimeType: media.mime_type,
+        });
         return {
           ...base,
           text: `[${message.type}]`,
           contentType: message.type,
+          mediaId: media.id,
+          ...(media.mime_type !== undefined && { mimeType: media.mime_type }),
+        };
+      }
+      case 'sticker': {
+        const media = message.sticker;
+        if (!media?.id) return null;
+        return {
+          ...base,
+          text: '[sticker]',
+          contentType: 'image',
           mediaId: media.id,
           ...(media.mime_type !== undefined && { mimeType: media.mime_type }),
         };

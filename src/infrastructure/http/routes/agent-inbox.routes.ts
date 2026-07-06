@@ -274,7 +274,7 @@ export function createAgentInboxRouter(
         return;
       }
       if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
-        res.status(413).json({ error: 'Archivo demasiado grande (máximo 10 MB)' });
+        res.status(413).json({ error: 'Archivo demasiado grande (máximo 16 MB para audio/video, 5 MB para imágenes)' });
         return;
       }
       if (err instanceof Error && err.message.includes('Tipo de archivo no permitido')) {

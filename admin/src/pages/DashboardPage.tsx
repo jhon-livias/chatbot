@@ -57,6 +57,22 @@ function formatTime(iso: string | null): string {
   return d.toLocaleDateString('es-PE', { day: '2-digit', month: 'short' })
 }
 
+// ─── Agent inbox chip filters ─────────────────────────────────────────────────
+type AgentChip = 'all' | 'mine' | 'unread' | 'unanswered' | 'bot'
+const AGENT_CHIPS: { id: AgentChip; label: string }[] = [
+  { id: 'all',        label: 'Todos' },
+  { id: 'mine',       label: 'Mis chats' },
+  { id: 'unread',     label: 'No leídos' },
+  { id: 'unanswered', label: 'Sin responder' },
+  { id: 'bot',        label: 'Bot' },
+]
+function chipToFilters(chip: AgentChip): { agentFilter: AgentInboxFilter; listFilter: InboxListFilter } {
+  if (chip === 'bot')        return { agentFilter: 'bot',  listFilter: 'all' }
+  if (chip === 'unread')     return { agentFilter: 'own',  listFilter: 'unread' }
+  if (chip === 'unanswered') return { agentFilter: 'own',  listFilter: 'unanswered' }
+  return                            { agentFilter: 'own',  listFilter: 'all' }
+}
+
 /** G7 — date separator label */
 function dateSepLabel(date: Date): string {
   const now = new Date()
@@ -879,8 +895,8 @@ export default function DashboardPage() {
   const { agent, logout, isAdmin } = useAuth()
   const { id } = useParams<{ id?: string }>()
   const navigate = useNavigate()
-  const [agentFilter, setAgentFilter] = useState<AgentInboxFilter>('own')
-  const [listFilter, setListFilter] = useState<InboxListFilter>('all')
+  const [activeChip, setActiveChip] = useState<AgentChip>('all')
+  const { agentFilter, listFilter } = chipToFilters(activeChip)
   const [searchInput, setSearchInput] = useState('')
   const searchQuery = useDebounced(searchInput, 300)
   const [includeArchived, setIncludeArchived] = useState(false)
@@ -914,13 +930,9 @@ export default function DashboardPage() {
 
   useMessageNotifications({ activeConversationId: id, readOnly: isAdmin, agentId: agent?.id })
 
-  function handleTakeSuccess() { setAgentFilter('own'); reloadInbox() }
-  function handleAgentFilterChange(filter: AgentInboxFilter) {
-    setAgentFilter(filter); setListFilter('all')
-    if (id) navigate('/')
-  }
-  function handleListFilterChange(filter: InboxListFilter) {
-    setListFilter(filter)
+  function handleTakeSuccess() { setActiveChip('all'); reloadInbox() }
+  function handleChipChange(chip: AgentChip) {
+    setActiveChip(chip)
     if (id) navigate('/')
   }
   function openChat(conv: ConversationSummary) { navigate(`/chat/${conv.id}`) }
@@ -964,78 +976,58 @@ export default function DashboardPage() {
 
         <ConnectionBanner />
 
-        {/* ── Admin filters ── */}
-        {isAdmin ? (
-          <>
-            <div className="dash-filters">
-              {(['all', 'bot', 'assigned'] as AdminInboxFilter[]).map((f) => (
-                <button key={f} type="button"
-                  className={`dash-filter-btn${adminFilter === f ? ' dash-filter-btn--active' : ''}`}
-                  onClick={() => setAdminFilter(f)}
-                >
-                  {f === 'all' ? 'Todos' : f === 'bot' ? 'Bot' : 'Asignados'}
-                </button>
-              ))}
-            </div>
-            {/* C15 archived toggle (admin) */}
-            <div className="dash-archived-row">
-              <label className="dash-archived-label">
-                <input
-                  type="checkbox"
-                  checked={includeArchived}
-                  onChange={(e) => setIncludeArchived(e.target.checked)}
-                />
-                Mostrar archivados
-              </label>
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="dash-filters">
-              <button type="button"
-                className={`dash-filter-btn${agentFilter === 'own' ? ' dash-filter-btn--active' : ''}`}
-                onClick={() => handleAgentFilterChange('own')}
-              >Propios</button>
-              <button type="button"
-                className={`dash-filter-btn${agentFilter === 'bot' ? ' dash-filter-btn--active' : ''}`}
-                onClick={() => handleAgentFilterChange('bot')}
-              >Bot</button>
-            </div>
-            {agentFilter === 'own' && (
-              <div className="dash-filters dash-filters--secondary">
-                {(['all', 'unread', 'unanswered'] as InboxListFilter[]).map((f) => (
+        {/* ── Search + chip filters (WhatsApp-style) ── */}
+        <div className="dash-inbox-search-wrap">
+          <div className="dash-inbox-search">
+            <svg viewBox="0 0 20 20" fill="currentColor" width="15" height="15" className="dash-inbox-search-icon" aria-hidden>
+              <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
+            </svg>
+            <input
+              type="search"
+              className="dash-inbox-search-input"
+              placeholder="Buscar o iniciar un chat"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              autoComplete="off"
+            />
+            {searchInput && (
+              <button type="button" className="dash-inbox-search-clear" onClick={() => setSearchInput('')} title="Limpiar">✕</button>
+            )}
+          </div>
+        </div>
+
+        <div className="dash-chips-wrap">
+          <div className="dash-chips-strip">
+            {isAdmin ? (
+              <>
+                {(['all', 'bot', 'assigned'] as AdminInboxFilter[]).map((f) => (
                   <button key={f} type="button"
-                    className={`dash-filter-btn${listFilter === f ? ' dash-filter-btn--active' : ''}`}
-                    onClick={() => handleListFilterChange(f)}
+                    className={`dash-chip${adminFilter === f ? ' dash-chip--active' : ''}`}
+                    onClick={() => setAdminFilter(f)}
                   >
-                    {f === 'all' ? 'Todos' : f === 'unread' ? 'No leídos' : 'Sin responder'}
+                    {f === 'all' ? 'Todos' : f === 'bot' ? 'Bot' : 'Asignados'}
                   </button>
                 ))}
-              </div>
+                <label className="dash-chip dash-chip--toggle">
+                  <input
+                    type="checkbox"
+                    style={{ display: 'none' }}
+                    checked={includeArchived}
+                    onChange={(e) => setIncludeArchived(e.target.checked)}
+                  />
+                  {includeArchived ? '☑ Archivados' : 'Archivados'}
+                </label>
+              </>
+            ) : (
+              AGENT_CHIPS.map((chip) => (
+                <button key={chip.id} type="button"
+                  className={`dash-chip${activeChip === chip.id ? ' dash-chip--active' : ''}`}
+                  onClick={() => handleChipChange(chip.id)}
+                >
+                  {chip.label}
+                </button>
+              ))
             )}
-          </>
-        )}
-
-        {/* C12 + C13 — búsqueda y etiqueta */}
-        <div className="dash-filter-bar">
-          <div className="dash-filter-field">
-            <span className="dash-filter-label">Buscar contacto</span>
-            <div className="dash-search dash-search--compact">
-              <svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14" className="dash-search-icon" aria-hidden>
-                <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
-              </svg>
-              <input
-                type="search"
-                className="dash-search-input"
-                placeholder="Nombre o teléfono…"
-                value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
-                autoComplete="off"
-              />
-              {searchInput && (
-                <button type="button" className="dash-search-clear" onClick={() => setSearchInput('')} title="Limpiar">✕</button>
-              )}
-            </div>
           </div>
         </div>
 

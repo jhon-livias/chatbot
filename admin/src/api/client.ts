@@ -9,6 +9,15 @@ export function getToken(): string | null {
   return localStorage.getItem('uprit_agent_token')
 }
 
+/** Append JWT query param for GET /media (img/audio/video cannot send Authorization header). */
+export function resolveMediaUrl(mediaUrl: string): string {
+  if (!mediaUrl.startsWith('/media/')) return mediaUrl
+  const token = getToken()
+  if (!token) return mediaUrl
+  const sep = mediaUrl.includes('?') ? '&' : '?'
+  return `${BASE}${mediaUrl}${sep}token=${encodeURIComponent(token)}`
+}
+
 /** Build WebSocket URL for /api/v1/ws with JWT query param. */
 export function getWebSocketUrl(token: string): string {
   const base = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? ''

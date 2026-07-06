@@ -9,14 +9,21 @@ export interface AgentJwtPayload {
   role?: AgentRole;
 }
 
-export function authenticateAgentJwt(req: Request, res: Response, next: NextFunction): void {
+function extractBearerOrQueryToken(req: Request): string | null {
   const authHeader = req.headers['authorization'];
-  if (!authHeader?.startsWith('Bearer ')) {
+  if (authHeader?.startsWith('Bearer ')) {
+    return authHeader.slice(7);
+  }
+  const queryToken = req.query['token'];
+  return typeof queryToken === 'string' && queryToken.length > 0 ? queryToken : null;
+}
+
+export function authenticateAgentJwt(req: Request, res: Response, next: NextFunction): void {
+  const token = extractBearerOrQueryToken(req);
+  if (!token) {
     res.status(401).json({ error: 'Token de autenticación requerido' });
     return;
   }
-
-  const token = authHeader.slice(7);
   const secret = process.env['JWT_SECRET'];
   if (!secret) {
     res.status(500).json({ error: 'Server configuration error' });

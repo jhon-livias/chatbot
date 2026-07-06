@@ -1,4 +1,5 @@
 import type { ChatMessage } from '../hooks/useChatMessages'
+import { resolveMediaUrl } from '../api/client'
 import MessageStatusIcon from './MessageStatusIcon'
 
 interface Props {
@@ -51,11 +52,12 @@ function MediaContent({ message: m }: { message: ChatMessage }) {
   const isDoc = m.contentType === 'document'
   const isAudio = m.contentType === 'audio'
   const isVideo = m.contentType === 'video'
+  const mediaSrc = m.mediaUrl ? resolveMediaUrl(m.mediaUrl) : undefined
 
-  if (isAudio && m.mediaUrl) {
+  if (isAudio && mediaSrc) {
     return (
       <div className="dash-bubble-audio">
-        <audio controls preload="none" src={m.mediaUrl} className="dash-bubble-audio-player">
+        <audio controls preload="none" src={mediaSrc} className="dash-bubble-audio-player">
           Tu navegador no soporta audio HTML5.
         </audio>
         {m.caption && <span className="dash-bubble-caption">{m.caption}</span>}
@@ -63,10 +65,10 @@ function MediaContent({ message: m }: { message: ChatMessage }) {
     )
   }
 
-  if (isVideo && m.mediaUrl) {
+  if (isVideo && mediaSrc) {
     return (
       <div className="dash-bubble-video">
-        <video controls preload="none" src={m.mediaUrl} className="dash-bubble-video-player">
+        <video controls preload="none" src={mediaSrc} className="dash-bubble-video-player">
           Tu navegador no soporta video HTML5.
         </video>
         {m.caption && <span className="dash-bubble-caption">{m.caption}</span>}
@@ -74,11 +76,11 @@ function MediaContent({ message: m }: { message: ChatMessage }) {
     )
   }
 
-  if (isImage && m.mediaUrl) {
+  if (isImage && mediaSrc) {
     return (
-      <a href={m.mediaUrl} target="_blank" rel="noopener noreferrer" className="dash-bubble-media-link">
+      <a href={mediaSrc} target="_blank" rel="noopener noreferrer" className="dash-bubble-media-link">
         <img
-          src={m.mediaUrl}
+          src={mediaSrc}
           alt={m.caption ?? m.fileName ?? 'imagen'}
           className="dash-bubble-img"
           loading="lazy"
@@ -88,9 +90,9 @@ function MediaContent({ message: m }: { message: ChatMessage }) {
     )
   }
 
-  if (isDoc && m.mediaUrl) {
+  if (isDoc && mediaSrc) {
     return (
-      <a href={m.mediaUrl} target="_blank" rel="noopener noreferrer" className="dash-bubble-doc">
+      <a href={mediaSrc} target="_blank" rel="noopener noreferrer" className="dash-bubble-doc">
         <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20" aria-hidden>
           <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM6 20V4h5v7h7v9H6z"/>
         </svg>

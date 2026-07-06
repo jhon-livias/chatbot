@@ -1161,6 +1161,63 @@ body { min-height: 100dvh; }
   border-color: rgba(255,255,255,.2);
 }
 
+/* ── Attach popup menu (WhatsApp-style) ──────────────────── */
+.dash-attach-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.dash-attach-menu {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  background: #1e1e2e;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 12px;
+  overflow: hidden;
+  min-width: 180px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.45);
+  z-index: 200;
+  animation: attach-menu-in .12s ease;
+}
+@keyframes attach-menu-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.dash-attach-menu-item {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  width: 100%;
+  padding: .7rem 1rem;
+  background: transparent;
+  border: none;
+  color: #e2e8f0;
+  font-size: .875rem;
+  cursor: pointer;
+  transition: background .12s;
+  text-align: left;
+}
+.dash-attach-menu-item:hover {
+  background: rgba(255,255,255,.07);
+}
+.dash-attach-menu-item + .dash-attach-menu-item {
+  border-top: 1px solid rgba(255,255,255,.06);
+}
+
+.dash-attach-menu-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.dash-attach-menu-icon--doc  { background: #4f46e5; color: #fff; }
+.dash-attach-menu-icon--media { background: #0ea5e9; color: #fff; }
+
 /* ── M7: Archived toggle row ─────────────────────────────── */
 .dash-archived-row {
   padding: .3rem 1rem .2rem;

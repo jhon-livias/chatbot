@@ -104,13 +104,33 @@ function matchesLabelFilter(conv: ConversationSummary, label: string): boolean {
 
 /** Sync with ALLOWED_AGENT_MEDIA_MIMES (agent-media-upload.middleware.ts) */
 const ALLOWED_MIME = new Set([
-  'image/jpeg', 'image/png', 'image/webp', 'application/pdf',
+  'image/jpeg', 'image/png', 'image/webp', 'image/gif',
+  'application/pdf', 'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-powerpoint',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'text/csv', 'text/plain',
   'audio/ogg', 'audio/mpeg', 'audio/mp4', 'audio/aac', 'audio/amr',
   'audio/wav', 'audio/x-wav', 'audio/webm',
-  'video/mp4', 'video/3gpp',
+  'video/mp4', 'video/3gpp', 'video/quicktime', 'video/x-msvideo',
 ])
 
-const ATTACH_ACCEPT = 'image/jpeg,image/png,image/webp,application/pdf,audio/*,video/mp4,video/3gpp'
+const ACCEPT_DOCS = [
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-powerpoint',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'text/csv',
+  'text/plain',
+  '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.csv,.txt',
+].join(',')
+
+const ACCEPT_MEDIA = 'image/jpeg,image/png,image/webp,image/gif,video/mp4,video/3gpp,video/quicktime,video/x-msvideo,.jpg,.jpeg,.png,.gif,.webp,.mp4,.mov,.avi,.3gp'
 
 function isAllowedFile(file: File): boolean {
   return ALLOWED_MIME.has(file.type)
@@ -403,10 +423,25 @@ function ChatPanel({
   const [isNoteMode, setIsNoteMode] = useState(false)
   const [showQuickReplies, setShowQuickReplies] = useState(false)
   const [showReassignModal, setShowReassignModal] = useState(false)
+  const [showAttachMenu, setShowAttachMenu] = useState(false)
   const messagesRef = useRef<HTMLDivElement>(null)
   const nearBottomRef = useRef(true)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const fileMediaRef = useRef<HTMLInputElement>(null)
+  const attachBtnRef = useRef<HTMLButtonElement>(null)
   const qrBtnRef = useRef<HTMLButtonElement>(null)
+
+  // Close attach menu when clicking outside
+  useEffect(() => {
+    if (!showAttachMenu) return
+    function onDocClick(e: MouseEvent) {
+      if (attachBtnRef.current && !attachBtnRef.current.closest('.dash-attach-wrap')?.contains(e.target as Node)) {
+        setShowAttachMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', onDocClick)
+    return () => document.removeEventListener('mousedown', onDocClick)
+  }, [showAttachMenu])
 
   const isBotPreview = botPreview === true && meta?.mode === 'bot'
   const canReply = !readOnly && !isBotPreview
@@ -489,11 +524,13 @@ function ChatPanel({
     if (file && isAllowedFile(file)) { e.preventDefault(); setPendingFile(file); setSendError('') }
   }
 
-  function handleAttachClick() { fileInputRef.current?.click() }
+  function handleAttachClick() { setShowAttachMenu((v) => !v) }
+  function handlePickDocs() { setShowAttachMenu(false); fileInputRef.current?.click() }
+  function handlePickMedia() { setShowAttachMenu(false); fileMediaRef.current?.click() }
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (file && isAllowedFile(file)) { setPendingFile(file); setSendError('') }
-    else if (file) setSendError('Tipo no permitido.')
+    else if (file) setSendError('Tipo no permitido. Usa documentos o fotos/videos permitidos.')
     e.target.value = ''
   }
 
@@ -737,14 +774,41 @@ function ChatPanel({
 
           <form onSubmit={sendMessage}>
             <div className="dash-input-row">
-              <input ref={fileInputRef} type="file" accept={ATTACH_ACCEPT} style={{ display: 'none' }} onChange={handleFileChange} />
+              {/* Hidden inputs: one for documents, one for photos/videos */}
+              <input ref={fileInputRef} type="file" accept={ACCEPT_DOCS} style={{ display: 'none' }} onChange={handleFileChange} />
+              <input ref={fileMediaRef} type="file" accept={ACCEPT_MEDIA} style={{ display: 'none' }} onChange={handleFileChange} />
 
               {!isNoteMode && (
-                <button type="button" className="dash-attach-btn" onClick={handleAttachClick} disabled={sending || windowBlocked} title="Adjuntar imagen, PDF, audio o video">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="20" height="20">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-                  </svg>
-                </button>
+                <div className="dash-attach-wrap">
+                  {showAttachMenu && (
+                    <div className="dash-attach-menu">
+                      <button type="button" className="dash-attach-menu-item" onClick={handlePickDocs}>
+                        <span className="dash-attach-menu-icon dash-attach-menu-icon--doc">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="20" height="20"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                        </span>
+                        <span>Documento</span>
+                      </button>
+                      <button type="button" className="dash-attach-menu-item" onClick={handlePickMedia}>
+                        <span className="dash-attach-menu-icon dash-attach-menu-icon--media">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="20" height="20"><path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                        </span>
+                        <span>Foto o video</span>
+                      </button>
+                    </div>
+                  )}
+                  <button
+                    ref={attachBtnRef}
+                    type="button"
+                    className={`dash-attach-btn${showAttachMenu ? ' dash-attach-btn--active' : ''}`}
+                    onClick={handleAttachClick}
+                    disabled={sending || windowBlocked}
+                    title="Adjuntar archivo"
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="20" height="20">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                    </svg>
+                  </button>
+                </div>
               )}
 
               {/* Quick replies button */}

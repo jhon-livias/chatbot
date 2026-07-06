@@ -12,6 +12,10 @@ export interface HandleIncomingMessageDto {
   mimeType?: string;
   fileName?: string;
   caption?: string;
+  latitude?: number;
+  longitude?: number;
+  locationName?: string;
+  locationAddress?: string;
 }
 
 export interface HandleIncomingMessageResult {

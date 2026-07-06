@@ -111,6 +111,10 @@ export class WhatsAppController {
         ...(message.mimeType !== undefined && { mimeType: message.mimeType }),
         ...(message.fileName !== undefined && { fileName: message.fileName }),
         ...(message.caption !== undefined && { caption: message.caption }),
+        ...(message.latitude !== undefined && { latitude: message.latitude }),
+        ...(message.longitude !== undefined && { longitude: message.longitude }),
+        ...(message.locationName !== undefined && { locationName: message.locationName }),
+        ...(message.locationAddress !== undefined && { locationAddress: message.locationAddress }),
       });
 
       logger.info('[WhatsApp] Message processed', {

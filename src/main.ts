@@ -19,6 +19,7 @@ import { LocalMediaStorage } from './infrastructure/storage/local-media.storage.
 import { WhatsAppController } from './infrastructure/webhooks/meta/whatsapp.controller.js';
 import { WhatsAppParserService } from './infrastructure/webhooks/meta/whatsapp-parser.service.js';
 import { HandleIncomingMessageUseCase } from './application/use-cases/handle-incoming-message/handle-incoming-message.usecase.js';
+import { SendProgramBrochureUseCase } from './application/use-cases/send-program-brochure/send-program-brochure.usecase.js';
 import { HandleMessageStatusUseCase } from './application/use-cases/handle-message-status/handle-message-status.usecase.js';
 import { SystemPromptBuilderService } from './application/services/system-prompt-builder.service.js';
 import { IntentRouterService } from './application/services/intent-router.service.js';
@@ -85,6 +86,11 @@ async function bootstrap(): Promise<void> {
     process.env['MEDIA_STORAGE_PATH'] ?? '/app/uploads',
   );
   const metaAdapter = new MetaWhatsAppAdapter(metaMediaConfig, metaMediaService);
+  const sendProgramBrochure = new SendProgramBrochureUseCase(
+    programRepo,
+    metaAdapter,
+    metaMediaService,
+  );
 
   logger.info('[Bootstrap] Media storage initialized', {
     path: process.env['MEDIA_STORAGE_PATH'] ?? '/app/uploads',
@@ -113,6 +119,7 @@ async function bootstrap(): Promise<void> {
     realtimeNotifier,
     metaMediaService,
     localMediaStorage,
+    sendProgramBrochure,
   );
 
   const handleMessageStatus = new HandleMessageStatusUseCase(

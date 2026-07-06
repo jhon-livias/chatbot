@@ -7,6 +7,11 @@ export interface MessageEventData {
   content: string
   status: MessageStatus
   timestamp: string
+  contentType?: string
+  mediaUrl?: string
+  mimeType?: string
+  fileName?: string
+  caption?: string
   externalId?: string
   deliveredAt?: string
   readAt?: string

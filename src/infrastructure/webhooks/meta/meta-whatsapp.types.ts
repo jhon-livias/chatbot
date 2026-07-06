@@ -70,6 +70,13 @@ export interface MetaInteractivePayload {
   nfm_reply?: MetaInteractiveNfmReply;
 }
 
+export interface MetaLocationObject {
+  latitude: number;
+  longitude: number;
+  name?: string;
+  address?: string;
+}
+
 export interface MetaInboundMessage {
   from: string;
   id: string;
@@ -82,6 +89,7 @@ export interface MetaInboundMessage {
   video?: MetaMediaObject;
   sticker?: MetaMediaObject;
   interactive?: MetaInteractivePayload;
+  location?: MetaLocationObject;
 }
 
 export interface MetaMessageStatus {
@@ -100,7 +108,8 @@ export type ParsedMessageContentType =
   | 'document'
   | 'audio'
   | 'video'
-  | 'sticker';
+  | 'sticker'
+  | 'location';
 
 export interface ParsedWhatsAppInboundMessage {
   waId: string;
@@ -113,6 +122,10 @@ export interface ParsedWhatsAppInboundMessage {
   mimeType?: string;
   fileName?: string;
   caption?: string;
+  latitude?: number;
+  longitude?: number;
+  locationName?: string;
+  locationAddress?: string;
 }
 
 /**

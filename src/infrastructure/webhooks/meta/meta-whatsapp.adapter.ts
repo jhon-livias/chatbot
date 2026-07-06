@@ -7,6 +7,7 @@ import type {
   OutboundInteractiveButtonsMessage,
   OutboundInteractiveListMessage,
   OutboundCtaUrlMessage,
+  OutboundLocationMessage,
 } from '../../../application/ports/messaging-provider.port.js';
 import { logger } from '../../shared/logger.js';
 import { formatMetaApiError } from './meta-api-error.js';
@@ -118,6 +119,39 @@ export class MetaWhatsAppAdapter implements MessagingProviderPort {
         type: message.type,
         ...formatMetaApiError(err),
       });
+      throw err;
+    }
+  }
+
+  async sendLocation(message: OutboundLocationMessage): Promise<OutboundMessageResult> {
+    const to = toMetaRecipientId(message.to);
+
+    logger.debug('[Meta] Sending location', { to, lat: message.latitude, lng: message.longitude });
+
+    const locationPayload: Record<string, unknown> = {
+      latitude: message.latitude,
+      longitude: message.longitude,
+    };
+    if (message.name) locationPayload['name'] = message.name;
+    if (message.address) locationPayload['address'] = message.address;
+
+    try {
+      const response = await this.client.post<MetaSendMessageResponse>(
+        `/${this.phoneNumberId}/messages`,
+        {
+          messaging_product: 'whatsapp',
+          recipient_type: 'individual',
+          to,
+          type: 'location',
+          location: locationPayload,
+        },
+      );
+
+      const messageId = response.data.messages[0]?.id ?? '';
+      logger.debug('[Meta] Location sent', { messageId, to });
+      return { messageId, status: 'sent' };
+    } catch (err) {
+      logger.error('[Meta] Failed to send location', { to, ...formatMetaApiError(err) });
       throw err;
     }
   }

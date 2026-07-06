@@ -902,6 +902,25 @@ body { min-height: 100dvh; }
   max-width: 200px;
 }
 
+/* ── M9: Location bubble (A7) ────────────────────────────── */
+.dash-bubble-location {
+  display: flex;
+  align-items: flex-start;
+  gap: .55rem;
+  padding: .5rem .65rem;
+  background: rgba(255,255,255,.08);
+  border-radius: 8px;
+  text-decoration: none;
+  color: inherit;
+  transition: background .15s;
+}
+.dash-bubble-location:hover { background: rgba(255,255,255,.13); }
+.dash-bubble-location svg { flex-shrink: 0; color: #ef4444; margin-top: .1rem; }
+.dash-bubble-location-text { display: flex; flex-direction: column; gap: .15rem; min-width: 0; }
+.dash-bubble-location-name { font-size: .82rem; font-weight: 600; }
+.dash-bubble-location-addr { font-size: .78rem; opacity: .85; word-break: break-word; }
+.dash-bubble-location-link { font-size: .72rem; color: #60a5fa; font-weight: 500; }
+
 /* ── M7: Internal note bubble ────────────────────────────── */
 .dash-bubble-row--note { display: flex; justify-content: center; }
 .dash-bubble--internal {

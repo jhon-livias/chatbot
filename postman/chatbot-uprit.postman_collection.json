@@ -359,6 +359,51 @@
       "response": []
     },
     {
+      "name": "POST /webhook — Inbound location (A7)",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const secret = pm.environment.get('webhook_secret');",
+              "const rawBody = pm.variables.replaceIn(pm.request.body.raw);",
+              "const signature = CryptoJS.HmacSHA256(rawBody, secret).toString(CryptoJS.enc.Hex);",
+              "pm.request.headers.upsert({ key: 'x-hub-signature-256', value: 'sha256=' + signature });",
+              "pm.request.body.update(rawBody);"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"object\": \"whatsapp_business_account\",\n  \"entry\": [\n    {\n      \"id\": \"WHATSAPP_BUSINESS_ACCOUNT_ID\",\n      \"changes\": [\n        {\n          \"field\": \"messages\",\n          \"value\": {\n            \"messaging_product\": \"whatsapp\",\n            \"metadata\": {\n              \"display_phone_number\": \"15551234567\",\n              \"phone_number_id\": \"1234567890\"\n            },\n            \"contacts\": [\n              { \"profile\": { \"name\": \"Alumno Demo\" }, \"wa_id\": \"{{test_wa_id}}\" }\n            ],\n            \"messages\": [\n              {\n                \"from\": \"{{test_wa_id}}\",\n                \"id\": \"wamid.location.001\",\n                \"timestamp\": \"1719900200\",\n                \"type\": \"location\",\n                \"location\": {\n                  \"latitude\": -8.1116,\n                  \"longitude\": -79.0285,\n                  \"name\": \"UPRIT Trujillo\",\n                  \"address\": \"Av. América Sur 2555, Trujillo\"\n                }\n              }\n            ]\n          }\n        }\n      ]\n    }\n  ]\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": {
+          "raw": "{{base_url}}/webhook",
+          "host": ["{{base_url}}"],
+          "path": ["webhook"]
+        },
+        "description": "A7 inbound — Lead comparte ubicación. Parser guarda contentType=location, content=address y lat/lng en metadata."
+      },
+      "response": []
+    },
+    {
       "name": "POST /webhook — Status update (ignored, 200)",
       "event": [
         {

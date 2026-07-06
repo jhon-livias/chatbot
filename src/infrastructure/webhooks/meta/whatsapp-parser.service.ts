@@ -120,6 +120,24 @@ export class WhatsAppParserService {
           ...(caption !== undefined && { caption }),
         };
       }
+      case 'location': {
+        const loc = message.location;
+        if (loc === undefined || loc.latitude === undefined || loc.longitude === undefined) {
+          return null;
+        }
+        const address = loc.address?.trim();
+        const name = loc.name?.trim();
+        const text = address || name || `${loc.latitude},${loc.longitude}`;
+        return {
+          ...base,
+          text,
+          contentType: 'location',
+          latitude: loc.latitude,
+          longitude: loc.longitude,
+          ...(name !== undefined && { locationName: name }),
+          ...(address !== undefined && { locationAddress: address }),
+        };
+      }
       case 'interactive': {
         const interactive = message.interactive;
         if (!interactive) {

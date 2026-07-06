@@ -19,6 +19,11 @@ import { Message } from '../../../domain/entities/message.entity.js';
 import type { MessageContentType } from '../../../domain/entities/message.entity.js';
 import { Conversation } from '../../../domain/entities/conversation.entity.js';
 import type { MetaMediaService } from '../../../infrastructure/webhooks/meta/meta-media.service.js';
+import {
+  SendProgramBrochureUseCase,
+  isBrochureRequest,
+} from '../send-program-brochure/send-program-brochure.usecase.js';
+import type { Program } from '../../../domain/entities/program.entity.js';
 import type {
   HandleIncomingMessageDto,
   HandleIncomingMessageResult,
@@ -77,6 +82,7 @@ export class HandleIncomingMessageUseCase {
     private readonly realtimeNotifier?: RealtimeNotifier,
     private readonly metaMediaService?: MetaMediaService,
     private readonly mediaStorage?: MediaStoragePort,
+    private readonly sendProgramBrochure?: SendProgramBrochureUseCase,
   ) {}
 
   async execute(dto: HandleIncomingMessageDto): Promise<HandleIncomingMessageResult> {
@@ -188,6 +194,24 @@ export class HandleIncomingMessageUseCase {
       'user',
       this.funnelMediaMeta(dto, userMessage.mediaUrl),
     );
+
+    // ── F7: explicit brochure request → send PDF or link without AI ────────
+    if (
+      this.sendProgramBrochure &&
+      (dto.contentType ?? 'text') === 'text' &&
+      isBrochureRequest(dto.content)
+    ) {
+      const program = await this.resolveProgramForBrochure(conversation, dto.content);
+      if (program) {
+        return this.handleBrochureRequest({
+          conversation,
+          phoneNumberValue: phoneNumber.value,
+          funnelUserId,
+          userMessage,
+          program,
+        });
+      }
+    }
 
     // ── AI response: try intent routing first, fall back to monolithic prompt ──
     let aiContent: string;
@@ -514,7 +538,9 @@ export class HandleIncomingMessageUseCase {
   }
 
   private isNonTextMedia(dto: HandleIncomingMessageDto): boolean {
-    return (dto.contentType ?? 'text') !== 'text';
+    const type = dto.contentType ?? 'text';
+    // Location shares coordinates/address — process through normal bot flow (A7)
+    return type !== 'text' && type !== 'location';
   }
 
   private getAutoReplyUnsupportedMedia(): string {
@@ -573,6 +599,7 @@ export class HandleIncomingMessageUseCase {
   ): Promise<Message> {
     const contentType = dto.contentType ?? 'text';
     const mediaFields = await this.resolveMediaFields(conversation.id, dto);
+    const locationMeta = this.buildLocationMetadata(dto);
 
     return Message.create({
       id: MessageId.generate(),
@@ -585,9 +612,22 @@ export class HandleIncomingMessageUseCase {
       ...(mediaFields.mimeType !== undefined && { mimeType: mediaFields.mimeType }),
       ...(dto.fileName !== undefined && { fileName: dto.fileName }),
       ...(dto.caption !== undefined && { caption: dto.caption }),
+      ...(locationMeta !== undefined && { metadata: locationMeta }),
       status: 'received',
       timestamp: new Date(dto.timestamp),
     });
+  }
+
+  private buildLocationMetadata(
+    dto: HandleIncomingMessageDto,
+  ): Record<string, unknown> | undefined {
+    if ((dto.contentType ?? 'text') !== 'location') return undefined;
+    const meta: Record<string, unknown> = {};
+    if (dto.latitude !== undefined) meta['latitude'] = dto.latitude;
+    if (dto.longitude !== undefined) meta['longitude'] = dto.longitude;
+    if (dto.locationName !== undefined) meta['locationName'] = dto.locationName;
+    if (dto.locationAddress !== undefined) meta['locationAddress'] = dto.locationAddress;
+    return Object.keys(meta).length > 0 ? meta : undefined;
   }
 
   private async resolveMediaFields(
@@ -774,6 +814,108 @@ export class HandleIncomingMessageUseCase {
       ...chatHistory,
     ]);
     return { content: result.content, model: result.model, totalTokens: result.totalTokens };
+  }
+
+  private async resolveProgramForBrochure(
+    conversation: Conversation,
+    userContent: string,
+  ): Promise<Program | null> {
+    if (!this.programRepo) return null;
+
+    if (conversation.careerId) {
+      const byId = await this.programRepo.findById(conversation.careerId);
+      if (byId?.brochureUrl.trim()) return byId;
+    }
+
+    const programs = await this.programRepo.findActive();
+
+    if (conversation.currentProgramName) {
+      const byName = programs.find(
+        (p) => p.name.toLowerCase() === conversation.currentProgramName!.toLowerCase(),
+      );
+      if (byName?.brochureUrl.trim()) return byName;
+    }
+
+    const lower = userContent.toLowerCase();
+    for (const p of programs) {
+      if (p.brochureUrl.trim() && lower.includes(p.name.toLowerCase())) {
+        return p;
+      }
+    }
+
+    // Single active program with brochure when context is ambiguous
+    const withBrochure = programs.filter((p) => p.brochureUrl.trim());
+    if (withBrochure.length === 1) return withBrochure[0]!;
+
+    return null;
+  }
+
+  private async handleBrochureRequest(params: {
+    conversation: Conversation;
+    phoneNumberValue: string;
+    funnelUserId: string;
+    userMessage: Message;
+    program: Program;
+  }): Promise<HandleIncomingMessageResult> {
+    const { conversation, phoneNumberValue, funnelUserId, userMessage, program } = params;
+
+    const result = await this.sendProgramBrochure!.execute({
+      to: phoneNumberValue,
+      programId: program.id,
+    });
+
+    const replyContent =
+      result.sentAs === 'document'
+        ? `Brochure PDF — ${program.name}`
+        : `Brochure — ${program.name}: ${result.brochureUrl}`;
+
+    const assistantMessage = Message.create({
+      id: MessageId.generate(),
+      conversationId: conversation.id,
+      externalId: result.messageId,
+      role: 'assistant',
+      content: replyContent,
+      contentType: result.sentAs === 'document' ? 'document' : 'text',
+      status: 'sent',
+      timestamp: new Date(),
+      metadata: {
+        brochureUrl: result.brochureUrl,
+        programId: program.id,
+        sentAs: result.sentAs,
+      },
+    });
+
+    const updatedConversation = params.conversation
+      .addMessage(assistantMessage)
+      .resetHandoffs()
+      .withIntentContext(program.id, params.conversation.metaData, program.name);
+    await this.conversationRepo.save(updatedConversation);
+
+    if (this.messageRepo) {
+      await this.messageRepo.save(assistantMessage);
+    }
+
+    this.realtimeNotifier?.notifyNewMessage({
+      conversationId: updatedConversation.id,
+      conversationMode: updatedConversation.mode,
+      assignedAgentId: updatedConversation.assignedAgentId,
+      message: assistantMessage,
+    });
+
+    await this.saveFunnelMessage(funnelUserId, replyContent, 'bot');
+
+    logger.info('[HandleIncomingMessage] Brochure sent (F7)', {
+      program: program.name,
+      sentAs: result.sentAs,
+      phone: phoneNumberValue,
+    });
+
+    return {
+      conversationId: updatedConversation.id,
+      userMessageId: userMessage.id.value,
+      aiResponseId: assistantMessage.id.value,
+      aiResponseContent: replyContent,
+    };
   }
 
   private async buildSystemPrompt(): Promise<string> {

@@ -95,6 +95,11 @@ export class RealtimeNotifier {
       timestamp: message.timestamp.toISOString(),
     };
     if (message.externalId !== undefined) base.externalId = message.externalId;
+    if (message.contentType !== 'text') base.contentType = message.contentType;
+    if (message.mediaUrl !== undefined) base.mediaUrl = message.mediaUrl;
+    if (message.mimeType !== undefined) base.mimeType = message.mimeType;
+    if (message.fileName !== undefined) base.fileName = message.fileName;
+    if (message.caption !== undefined) base.caption = message.caption;
     if (message.deliveredAt !== undefined) base.deliveredAt = message.deliveredAt.toISOString();
     if (message.readAt !== undefined) base.readAt = message.readAt.toISOString();
     if (message.metadata !== undefined) base.metadata = message.metadata;

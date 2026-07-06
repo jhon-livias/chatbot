@@ -62,12 +62,22 @@ export interface OutboundCtaUrlMessage {
   url: string;
 }
 
+/** Outbound location pin (Meta WhatsApp Cloud API). */
+export interface OutboundLocationMessage {
+  to: string;
+  latitude: number;
+  longitude: number;
+  name?: string;
+  address?: string;
+}
+
 /**
  * Port that decouples the application layer from any messaging provider (WhatsApp, SMS, etc.).
  */
 export interface MessagingProviderPort {
   sendTextMessage(message: OutboundTextMessage): Promise<OutboundMessageResult>;
   sendMediaMessage(message: OutboundMediaMessage): Promise<OutboundMessageResult>;
+  sendLocation?(message: OutboundLocationMessage): Promise<OutboundMessageResult>;
   sendInteractiveButtons?(
     message: OutboundInteractiveButtonsMessage,
   ): Promise<OutboundMessageResult>;

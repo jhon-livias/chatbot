@@ -8,6 +8,11 @@ export interface MessageEventData {
   content: string;
   status: MessageStatus;
   timestamp: string;         // ISO 8601
+  contentType?: string;
+  mediaUrl?: string;
+  mimeType?: string;
+  fileName?: string;
+  caption?: string;
   externalId?: string;
   deliveredAt?: string;      // ISO 8601
   readAt?: string;           // ISO 8601

@@ -10,6 +10,42 @@ const ROLE_LABEL: Partial<Record<ChatMessage['role'], string>> = {
   system: 'Sistema',
 }
 
+function parseCoords(m: ChatMessage): { lat: number; lng: number } | null {
+  const meta = m.metadata
+  if (meta) {
+    const lat = Number(meta['latitude'])
+    const lng = Number(meta['longitude'])
+    if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng }
+  }
+  const match = m.content.match(/^(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)$/)
+  if (match) {
+    return { lat: Number(match[1]), lng: Number(match[2]) }
+  }
+  return null
+}
+
+function LocationContent({ message: m }: { message: ChatMessage }) {
+  const coords = parseCoords(m)
+  const name = (m.metadata?.['locationName'] as string | undefined) ?? undefined
+  const address = (m.metadata?.['locationAddress'] as string | undefined) ?? m.content
+  const mapsUrl = coords
+    ? `https://www.google.com/maps?q=${coords.lat},${coords.lng}`
+    : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`
+
+  return (
+    <a href={mapsUrl} target="_blank" rel="noopener noreferrer" className="dash-bubble-location">
+      <svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22" aria-hidden>
+        <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 010-5 2.5 2.5 0 010 5z"/>
+      </svg>
+      <span className="dash-bubble-location-text">
+        {name && <span className="dash-bubble-location-name">{name}</span>}
+        <span className="dash-bubble-location-addr">{address}</span>
+        <span className="dash-bubble-location-link">Ver en Google Maps →</span>
+      </span>
+    </a>
+  )
+}
+
 function MediaContent({ message: m }: { message: ChatMessage }) {
   const isImage = m.contentType === 'image'
   const isDoc = m.contentType === 'document'
@@ -45,13 +81,14 @@ function MediaContent({ message: m }: { message: ChatMessage }) {
 export default function MessageBubble({ message: m }: Props) {
   const isInternal = m.role === 'internal'
   const isOutbound = m.role === 'agent' || m.role === 'assistant'
+  const isLocation = m.contentType === 'location'
   const time = new Date(m.timestamp).toLocaleTimeString('es-PE', {
     hour: '2-digit',
     minute: '2-digit',
   })
   const senderLabel = ROLE_LABEL[m.role]
   const hasMedia = (m.contentType === 'image' || m.contentType === 'document') && m.mediaUrl
-  const showText = !hasMedia || !!m.content
+  const showText = !hasMedia && !isLocation && !!m.content
 
   if (isInternal) {
     return (
@@ -76,6 +113,7 @@ export default function MessageBubble({ message: m }: Props) {
     <div className={`dash-bubble-row${isOutbound ? ' dash-bubble-row--out' : ''}`}>
       <div className={`dash-bubble dash-bubble--${m.role}`}>
         {senderLabel && <span className="dash-bubble-sender">{senderLabel}</span>}
+        {isLocation && <LocationContent message={m} />}
         {hasMedia && <MediaContent message={m} />}
         {showText && <p className="dash-bubble-text">{m.content}</p>}
         <div className="dash-bubble-footer">

@@ -31,7 +31,15 @@ export class LocalMediaStorage implements MediaStoragePort {
     const storageKey = `${Date.now()}-${randomUUID()}.${ext}`;
     const dir = path.join(this.storagePath, options.conversationId);
 
-    await fs.mkdir(dir, { recursive: true });
+    try {
+      await fs.mkdir(dir, { recursive: true });
+    } catch (err) {
+      const e = err as NodeJS.ErrnoException;
+      if (e.code === 'EACCES') {
+        throw new Error(`Sin permiso de escritura en el directorio de uploads: ${dir}. Contacta al administrador.`);
+      }
+      throw err;
+    }
     await fs.writeFile(path.join(dir, storageKey), buffer);
 
     logger.debug('[LocalMediaStorage] Saved media', {

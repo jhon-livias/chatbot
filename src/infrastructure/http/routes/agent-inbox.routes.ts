@@ -289,7 +289,13 @@ export function createAgentInboxRouter(
         res.status(400).json({ error: err.message });
         return;
       }
-      throw err;
+      if (err instanceof Error && err.message.includes('Sin permiso de escritura')) {
+        res.status(500).json({ error: 'Error de almacenamiento en el servidor. Intenta de nuevo.' });
+        return;
+      }
+      // Last-resort: log and return 500 instead of crashing the process
+      const e = err as Error;
+      res.status(500).json({ error: e.message ?? 'Error interno del servidor' });
     }
   },
   );

@@ -73,6 +73,9 @@ COPY --from=prod-deps  --chown=appuser:appgroup /app/node_modules ./node_modules
 COPY --from=builder    --chown=appuser:appgroup /app/dist         ./dist
 COPY --chown=appuser:appgroup package.json ./
 
+# ── Directorio de uploads con permisos del usuario de la app ─────────────────
+RUN mkdir -p /app/uploads && chown -R appuser:appgroup /app/uploads
+
 # ── Variables de entorno con valores por defecto seguros ──────────────────────
 ENV NODE_ENV=production
 ENV PORT=3000

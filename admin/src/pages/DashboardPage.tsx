@@ -58,10 +58,9 @@ function formatTime(iso: string | null): string {
 }
 
 // ─── Agent inbox chip filters ─────────────────────────────────────────────────
-type AgentChip = 'all' | 'mine' | 'unread' | 'unanswered' | 'bot'
+type AgentChip = 'mine' | 'unread' | 'unanswered' | 'bot'
 // First 3 are shown inline; the rest appear only in the ▼ dropdown
 const AGENT_CHIPS: { id: AgentChip; label: string }[] = [
-  { id: 'all',        label: 'Todos' },
   { id: 'mine',       label: 'Mis chats' },
   { id: 'bot',        label: 'Bot' },
   { id: 'unread',     label: 'No leídos' },
@@ -896,7 +895,7 @@ export default function DashboardPage() {
   const { agent, logout, isAdmin } = useAuth()
   const { id } = useParams<{ id?: string }>()
   const navigate = useNavigate()
-  const [activeChip, setActiveChip] = useState<AgentChip>('all')
+  const [activeChip, setActiveChip] = useState<AgentChip>('mine')
   const { agentFilter, listFilter } = chipToFilters(activeChip)
   const [searchInput, setSearchInput] = useState('')
   const searchQuery = useDebounced(searchInput, 300)
@@ -945,7 +944,7 @@ export default function DashboardPage() {
     return () => document.removeEventListener('mousedown', onDocClick)
   }, [showChipsMenu])
 
-  function handleTakeSuccess() { setActiveChip('all'); reloadInbox() }
+  function handleTakeSuccess() { setActiveChip('mine'); reloadInbox() }
   function handleChipChange(chip: AgentChip) {
     setActiveChip(chip)
     setShowChipsMenu(false)

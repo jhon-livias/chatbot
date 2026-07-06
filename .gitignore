@@ -31,9 +31,8 @@ Thumbs.db
 coverage/
 .nyc_output/
 
-# VPS (llaves SSH y perfil local — no versionar)
-vps/*.pem
-vps/local.env
+# VPS — carpeta local (SSH, scripts, binarios); no versionar
+vps/
 
 # Postman environment con secrets reales (generado desde VPS)
 postman/*.local.json

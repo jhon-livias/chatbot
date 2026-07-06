@@ -7,6 +7,7 @@ import type {
   ParsedWhatsAppInboundMessage,
   ParsedWhatsAppStatusUpdate,
 } from './meta-whatsapp.types.js';
+import { logger } from '../../shared/logger.js';
 
 /**
  * Parses nested Meta WhatsApp Cloud API webhook payloads into normalized messages.
@@ -54,14 +55,11 @@ export class WhatsAppParserService {
     }
 
     const message = value.messages[0];
-    if (!message || message.type !== 'text' || !message.text?.body) {
+    if (!message) {
       return null;
     }
 
-    return this.buildParsedMessage(value, {
-      ...message,
-      text: { body: message.text.body },
-    });
+    return this.parseInboundMessage(value, message);
   }
 
   private parseChangeValue(value: MetaWebhookValue): ParsedWhatsAppInboundMessage[] {
@@ -71,10 +69,79 @@ export class WhatsAppParserService {
     }
 
     return inbound
-      .filter((message): message is MetaInboundMessage & { text: { body: string } } =>
-        message.type === 'text' && Boolean(message.text?.body),
-      )
-      .map((message) => this.buildParsedMessage(value, message));
+      .map((message) => this.parseInboundMessage(value, message))
+      .filter((message): message is ParsedWhatsAppInboundMessage => message !== null);
+  }
+
+  private parseInboundMessage(
+    value: MetaWebhookValue,
+    message: MetaInboundMessage,
+  ): ParsedWhatsAppInboundMessage | null {
+    const waId = message.from;
+    const profileName = this.resolveProfileName(value.contacts, waId);
+    const base = {
+      waId,
+      ...(profileName !== undefined && { profileName }),
+      externalMessageId: message.id,
+      timestampMs: Number.parseInt(message.timestamp, 10) * 1000,
+    };
+
+    switch (message.type) {
+      case 'text': {
+        const body = message.text?.body?.trim();
+        if (!body) return null;
+        return { ...base, text: body, contentType: 'text' };
+      }
+      case 'image': {
+        const media = message.image;
+        if (!media?.id) return null;
+        const caption = media.caption?.trim();
+        return {
+          ...base,
+          text: caption || '[image]',
+          contentType: 'image',
+          mediaId: media.id,
+          ...(media.mime_type !== undefined && { mimeType: media.mime_type }),
+          ...(caption !== undefined && { caption }),
+        };
+      }
+      case 'document': {
+        const media = message.document;
+        if (!media?.id) return null;
+        const caption = media.caption?.trim();
+        const fileName = media.filename?.trim();
+        return {
+          ...base,
+          text: caption || fileName || '[document]',
+          contentType: 'document',
+          mediaId: media.id,
+          ...(media.mime_type !== undefined && { mimeType: media.mime_type }),
+          ...(fileName !== undefined && { fileName }),
+          ...(caption !== undefined && { caption }),
+        };
+      }
+      case 'sticker':
+      case 'video':
+      case 'audio': {
+        const media = message[message.type];
+        logger.debug('[WhatsApp] Unsupported media type received (M11)', {
+          type: message.type,
+          mediaId: media?.id,
+          mimeType: media?.mime_type,
+        });
+        if (!media?.id) return null;
+        return {
+          ...base,
+          text: `[${message.type}]`,
+          contentType: message.type,
+          mediaId: media.id,
+          ...(media.mime_type !== undefined && { mimeType: media.mime_type }),
+        };
+      }
+      default:
+        logger.debug('[WhatsApp] Ignoring unsupported inbound message type', { type: message.type });
+        return null;
+    }
   }
 
   private parseStatusChangeValue(value: MetaWebhookValue): ParsedWhatsAppStatusUpdate[] {
@@ -96,22 +163,6 @@ export class WhatsAppParserService {
         timestampMs: Number.parseInt(status.timestamp, 10) * 1000,
         recipientId: status.recipient_id,
       }));
-  }
-
-  private buildParsedMessage(
-    value: MetaWebhookValue,
-    message: MetaInboundMessage & { text: { body: string } },
-  ): ParsedWhatsAppInboundMessage {
-    const waId = message.from;
-    const profileName = this.resolveProfileName(value.contacts, waId);
-
-    return {
-      waId,
-      ...(profileName !== undefined && { profileName }),
-      text: message.text.body,
-      externalMessageId: message.id,
-      timestampMs: Number.parseInt(message.timestamp, 10) * 1000,
-    };
   }
 
   private resolveProfileName(contacts: MetaContact[] | undefined, waId: string): string | undefined {

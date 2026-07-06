@@ -5,6 +5,7 @@ import type { ProgramRepository } from '../../../domain/repositories/program.rep
 import type { AgentRepository } from '../../../domain/repositories/agent.repository.js';
 import type { AiProviderPort } from '../../ports/ai-provider.port.js';
 import type { MessagingProviderPort } from '../../ports/messaging-provider.port.js';
+import type { MediaStoragePort } from '../../ports/media-storage.port.js';
 import type { SystemPromptBuilderService } from '../../services/system-prompt-builder.service.js';
 import type { IntentRouterService } from '../../services/intent-router.service.js';
 import type { FunnelUserMongoRepository } from '../../../infrastructure/database/mongodb/repositories/funnel-user.mongo-repository.js';
@@ -15,7 +16,9 @@ import { PhoneNumber } from '../../../domain/value-objects/phone-number.vo.js';
 import { MessageId } from '../../../domain/value-objects/message-id.vo.js';
 import { User } from '../../../domain/entities/user.entity.js';
 import { Message } from '../../../domain/entities/message.entity.js';
+import type { MessageContentType } from '../../../domain/entities/message.entity.js';
 import { Conversation } from '../../../domain/entities/conversation.entity.js';
+import type { MetaMediaService } from '../../../infrastructure/webhooks/meta/meta-media.service.js';
 import type {
   HandleIncomingMessageDto,
   HandleIncomingMessageResult,
@@ -46,6 +49,9 @@ const HANDOFF_DECLINED_MSG =
 const HANDOFF_LOOP_MSG =
   'Veo que no he podido darte la información que buscas. Un asesor de admisiones se pondrá en contacto contigo para ayudarte de forma personalizada.';
 
+const DEFAULT_AUTO_REPLY_UNSUPPORTED_MEDIA =
+  'Recibí tu archivo. Por favor cuéntame en texto tu consulta o espera a un asesor.';
+
 // Matches affirmative responses when user confirms wanting an advisor
 const AFFIRMATIVE_PATTERN =
   /\b(s[íi]|si|yes|claro|ok|okay|dale|perfecto|de\s*acuerdo|est[aá]\s*bien|acepto|quiero|as[ií]gname|adelante|afirmativo|por\s*favor|bueno|correcto|exacto|listo)\b/i;
@@ -69,6 +75,8 @@ export class HandleIncomingMessageUseCase {
     private readonly funnelMessageRepo?: FunnelMessageMongoRepository,
     private readonly messageRepo?: MessageRepository,
     private readonly realtimeNotifier?: RealtimeNotifier,
+    private readonly metaMediaService?: MetaMediaService,
+    private readonly mediaStorage?: MediaStoragePort,
   ) {}
 
   async execute(dto: HandleIncomingMessageDto): Promise<HandleIncomingMessageResult> {
@@ -127,6 +135,23 @@ export class HandleIncomingMessageUseCase {
       });
     }
 
+    // ── Idempotency: skip duplicate Meta message IDs ─────────────────────
+    if (this.messageRepo && dto.externalMessageId) {
+      const existing = await this.messageRepo.findByExternalId(dto.externalMessageId);
+      if (existing) {
+        logger.debug('[HandleIncomingMessage] Duplicate externalMessageId — skipping', {
+          externalMessageId: dto.externalMessageId,
+          conversationId: existing.conversationId,
+        });
+        return {
+          conversationId: existing.conversationId,
+          userMessageId: existing.id.value,
+          aiResponseId: '',
+          aiResponseContent: '',
+        };
+      }
+    }
+
     // ── 3. Human mode: bot silenced — queue message for assigned agent ───
     if (conversation.isHumanMode()) {
       return this.handleHumanModeInbound(conversation, dto, phoneNumber.value);
@@ -137,16 +162,13 @@ export class HandleIncomingMessageUseCase {
       return this.handlePendingHandoffReply(conversation, dto, phoneNumber.value);
     }
 
-    // --- Normal message processing ---
-    const userMessage = Message.create({
-      id: MessageId.generate(),
-      conversationId: conversation.id,
-      externalId: dto.externalMessageId,
-      role: 'user',
-      content: dto.content,
-      status: 'received',
-      timestamp: new Date(dto.timestamp),
-    });
+    // ── 5. Bot mode + non-text media: auto-reply, no DeepSeek ────────────
+    if (this.isNonTextMedia(dto)) {
+      return this.handleBotModeMediaInbound(conversation, dto, phoneNumber.value);
+    }
+
+    // --- Normal text message processing ---
+    const userMessage = await this.createUserMessage(conversation, dto);
 
     conversation = conversation
       .addMessage(userMessage)
@@ -157,7 +179,12 @@ export class HandleIncomingMessageUseCase {
     const funnelUserId = await this.upsertFunnelUser(phoneNumber.value, dto.profileName);
 
     // Save the inbound message to funnel_messages
-    await this.saveFunnelMessage(funnelUserId, dto.content, 'user');
+    await this.saveFunnelMessage(
+      funnelUserId,
+      dto.content,
+      'user',
+      this.funnelMediaMeta(dto, userMessage.mediaUrl),
+    );
 
     // ── AI response: try intent routing first, fall back to monolithic prompt ──
     let aiContent: string;
@@ -315,15 +342,11 @@ export class HandleIncomingMessageUseCase {
     dto: HandleIncomingMessageDto,
     phoneNumberValue: string,
   ): Promise<HandleIncomingMessageResult> {
-    const userMessage = Message.create({
-      id: MessageId.generate(),
-      conversationId: conversation.id,
-      externalId: dto.externalMessageId,
-      role: 'user',
-      content: dto.content,
-      status: 'received',
-      timestamp: new Date(dto.timestamp),
-    });
+    if (this.isNonTextMedia(dto) && !dto.caption?.trim()) {
+      return this.handleBotModeMediaInbound(conversation, dto, phoneNumberValue);
+    }
+
+    const userMessage = await this.createUserMessage(conversation, dto);
 
     conversation = conversation
       .addMessage(userMessage)
@@ -331,9 +354,15 @@ export class HandleIncomingMessageUseCase {
 
     // Ensure funnel user exists for this phone
     const funnelUserId = await this.upsertFunnelUser(phoneNumberValue, dto.profileName);
-    await this.saveFunnelMessage(funnelUserId, dto.content, 'user');
+    await this.saveFunnelMessage(
+      funnelUserId,
+      dto.content,
+      'user',
+      this.funnelMediaMeta(dto, userMessage.mediaUrl),
+    );
 
-    const isAffirmative = AFFIRMATIVE_PATTERN.test(dto.content.trim());
+    const replyText = dto.caption?.trim() || dto.content;
+    const isAffirmative = AFFIRMATIVE_PATTERN.test(replyText.trim());
 
     if (isAffirmative) {
       const agent = await this.pickAgent();
@@ -379,15 +408,7 @@ export class HandleIncomingMessageUseCase {
     dto: HandleIncomingMessageDto,
     phoneNumberValue: string,
   ): Promise<HandleIncomingMessageResult> {
-    const userMessage = Message.create({
-      id: MessageId.generate(),
-      conversationId: conversation.id,
-      externalId: dto.externalMessageId,
-      role: 'user',
-      content: dto.content,
-      status: 'received',
-      timestamp: new Date(dto.timestamp),
-    });
+    const userMessage = await this.createUserMessage(conversation, dto);
 
     conversation = conversation
       .addMessage(userMessage)
@@ -403,7 +424,12 @@ export class HandleIncomingMessageUseCase {
     });
 
     const funnelUserId = await this.upsertFunnelUser(phoneNumberValue, dto.profileName);
-    await this.saveFunnelMessage(funnelUserId, dto.content, 'user');
+    await this.saveFunnelMessage(
+      funnelUserId,
+      dto.content,
+      'user',
+      this.funnelMediaMeta(dto, userMessage.mediaUrl),
+    );
 
     logger.info('[HandleIncomingMessage] Human mode — message queued for agent', {
       phone: phoneNumberValue,
@@ -482,6 +508,122 @@ export class HandleIncomingMessageUseCase {
     const template =
       process.env['HANDOFF_TRANSITION_MESSAGE'] ?? DEFAULT_HANDOFF_TRANSITION_MSG;
     return template.replaceAll('{agentName}', agentName);
+  }
+
+  private isNonTextMedia(dto: HandleIncomingMessageDto): boolean {
+    return (dto.contentType ?? 'text') !== 'text';
+  }
+
+  private getAutoReplyUnsupportedMedia(): string {
+    return process.env['AUTO_REPLY_UNSUPPORTED_MEDIA'] ?? DEFAULT_AUTO_REPLY_UNSUPPORTED_MEDIA;
+  }
+
+  private funnelMediaMeta(
+    dto: HandleIncomingMessageDto,
+    mediaUrl?: string,
+  ): { contentType?: MessageContentType; mediaUrl?: string } {
+    return {
+      ...(dto.contentType !== undefined && { contentType: dto.contentType }),
+      ...(mediaUrl !== undefined && { mediaUrl }),
+    };
+  }
+
+  /** Bot mode inbound for image/document/audio/video/sticker — no DeepSeek. */
+  private async handleBotModeMediaInbound(
+    conversation: Conversation,
+    dto: HandleIncomingMessageDto,
+    phoneNumberValue: string,
+  ): Promise<HandleIncomingMessageResult> {
+    const userMessage = await this.createUserMessage(conversation, dto);
+
+    conversation = conversation
+      .addMessage(userMessage)
+      .withLastUserMessageAt(new Date(dto.timestamp));
+    await this.conversationRepo.save(conversation);
+
+    const funnelUserId = await this.upsertFunnelUser(phoneNumberValue, dto.profileName);
+    await this.saveFunnelMessage(
+      funnelUserId,
+      dto.content,
+      'user',
+      this.funnelMediaMeta(dto, userMessage.mediaUrl),
+    );
+
+    const autoReply = this.getAutoReplyUnsupportedMedia();
+    await this.messagingProvider.sendTextMessage({
+      to: phoneNumberValue,
+      body: autoReply,
+    });
+    await this.saveFunnelMessage(funnelUserId, autoReply, 'bot');
+
+    return {
+      conversationId: conversation.id,
+      userMessageId: userMessage.id.value,
+      aiResponseId: '',
+      aiResponseContent: autoReply,
+    };
+  }
+
+  private async createUserMessage(
+    conversation: Conversation,
+    dto: HandleIncomingMessageDto,
+  ): Promise<Message> {
+    const contentType = dto.contentType ?? 'text';
+    const mediaFields = await this.resolveMediaFields(conversation.id, dto);
+
+    return Message.create({
+      id: MessageId.generate(),
+      conversationId: conversation.id,
+      externalId: dto.externalMessageId,
+      role: 'user',
+      content: dto.content,
+      contentType,
+      ...(mediaFields.mediaUrl !== undefined && { mediaUrl: mediaFields.mediaUrl }),
+      ...(mediaFields.mimeType !== undefined && { mimeType: mediaFields.mimeType }),
+      ...(dto.fileName !== undefined && { fileName: dto.fileName }),
+      ...(dto.caption !== undefined && { caption: dto.caption }),
+      status: 'received',
+      timestamp: new Date(dto.timestamp),
+    });
+  }
+
+  private async resolveMediaFields(
+    conversationId: string,
+    dto: HandleIncomingMessageDto,
+  ): Promise<{ mediaUrl?: string; mimeType?: string }> {
+    const contentType = dto.contentType ?? 'text';
+    if (contentType !== 'image' && contentType !== 'document') {
+      return { ...(dto.mimeType !== undefined && { mimeType: dto.mimeType }) };
+    }
+    if (!dto.mediaId || !this.metaMediaService || !this.mediaStorage) {
+      return { ...(dto.mimeType !== undefined && { mimeType: dto.mimeType }) };
+    }
+
+    try {
+      const { buffer, mimeType } = await this.metaMediaService.downloadMedia(dto.mediaId);
+      const resolvedMimeType = mimeType ?? dto.mimeType ?? 'application/octet-stream';
+      const saved = await this.mediaStorage.save(buffer, {
+        mimeType: resolvedMimeType,
+        conversationId,
+        ...(dto.fileName !== undefined && { originalName: dto.fileName }),
+      });
+
+      logger.info('[WhatsApp] Media received', {
+        contentType,
+        mimeType: resolvedMimeType,
+        conversationId,
+      });
+
+      return { mediaUrl: saved.publicPath, mimeType: resolvedMimeType };
+    } catch (err) {
+      logger.error('[HandleIncomingMessage] Failed to download/save media', {
+        conversationId,
+        mediaId: dto.mediaId,
+        contentType,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return { ...(dto.mimeType !== undefined && { mimeType: dto.mimeType }) };
+    }
   }
 
   private async pickAgent(): Promise<Agent | null> {
@@ -567,11 +709,17 @@ export class HandleIncomingMessageUseCase {
     funnelUserId: string,
     text: string,
     role: 'user' | 'bot',
+    media?: { contentType?: MessageContentType; mediaUrl?: string },
   ): Promise<void> {
     if (!this.funnelMessageRepo || !funnelUserId) return;
     try {
       if (role === 'user') {
-        await this.funnelMessageRepo.saveUserMessage({ funnelUserId, text });
+        await this.funnelMessageRepo.saveUserMessage({
+          funnelUserId,
+          text,
+          ...(media?.contentType !== undefined && { contentType: media.contentType }),
+          ...(media?.mediaUrl !== undefined && { mediaUrl: media.mediaUrl }),
+        });
       } else {
         await this.funnelMessageRepo.saveBotMessage({ funnelUserId, text });
       }

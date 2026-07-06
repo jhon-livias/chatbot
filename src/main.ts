@@ -78,11 +78,9 @@ async function bootstrap(): Promise<void> {
     baseUrl: process.env['META_API_BASE_URL'] ?? 'https://graph.facebook.com',
   };
   const metaMediaService = new MetaMediaService(metaMediaConfig);
-  // localMediaStorage will be injected into use-cases in M2/M3
   const localMediaStorage = new LocalMediaStorage(
     process.env['MEDIA_STORAGE_PATH'] ?? '/app/uploads',
   );
-  void localMediaStorage; // suppress unused-var until M2
   const metaAdapter = new MetaWhatsAppAdapter(metaMediaConfig, metaMediaService);
 
   logger.info('[Bootstrap] Media storage initialized', {
@@ -110,6 +108,8 @@ async function bootstrap(): Promise<void> {
     funnelMessageRepo,
     messageRepo,
     realtimeNotifier,
+    metaMediaService,
+    localMediaStorage,
   );
 
   const handleMessageStatus = new HandleMessageStatusUseCase(

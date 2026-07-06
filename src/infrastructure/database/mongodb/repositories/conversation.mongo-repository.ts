@@ -158,6 +158,11 @@ export class ConversationMongoRepository implements ConversationRepository {
       externalId: m.externalId,
       role: m.role,
       content: m.content,
+      contentType: m.contentType,
+      mediaUrl: m.mediaUrl,
+      mimeType: m.mimeType,
+      fileName: m.fileName,
+      caption: m.caption,
       status: m.status,
       timestamp: m.timestamp,
       deliveredAt: m.deliveredAt,
@@ -168,9 +173,24 @@ export class ConversationMongoRepository implements ConversationRepository {
     if (messageDocs.length > 0) {
       await MessageModel.bulkWrite(
         messageDocs.map((doc) => {
-          const { externalId, deliveredAt, readAt, metadata, ...required } = doc;
-          const $set: Record<string, unknown> = { ...required };
+          const {
+            externalId,
+            contentType,
+            mediaUrl,
+            mimeType,
+            fileName,
+            caption,
+            deliveredAt,
+            readAt,
+            metadata,
+            ...required
+          } = doc;
+          const $set: Record<string, unknown> = { ...required, contentType: contentType ?? 'text' };
           if (externalId !== undefined) $set['externalId'] = externalId;
+          if (mediaUrl !== undefined) $set['mediaUrl'] = mediaUrl;
+          if (mimeType !== undefined) $set['mimeType'] = mimeType;
+          if (fileName !== undefined) $set['fileName'] = fileName;
+          if (caption !== undefined) $set['caption'] = caption;
           if (deliveredAt !== undefined) $set['deliveredAt'] = deliveredAt;
           if (readAt !== undefined) $set['readAt'] = readAt;
           if (metadata !== undefined) $set['metadata'] = metadata;
@@ -204,6 +224,11 @@ export class ConversationMongoRepository implements ConversationRepository {
         ...(d.externalId !== undefined && { externalId: d.externalId }),
         role: d.role,
         content: d.content,
+        contentType: d.contentType ?? 'text',
+        ...(d.mediaUrl !== undefined && { mediaUrl: d.mediaUrl }),
+        ...(d.mimeType !== undefined && { mimeType: d.mimeType }),
+        ...(d.fileName !== undefined && { fileName: d.fileName }),
+        ...(d.caption !== undefined && { caption: d.caption }),
         status: d.status,
         timestamp: d.timestamp,
         ...(d.deliveredAt !== undefined && { deliveredAt: d.deliveredAt }),

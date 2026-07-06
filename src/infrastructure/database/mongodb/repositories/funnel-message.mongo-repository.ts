@@ -10,6 +10,8 @@ export class FunnelMessageMongoRepository {
     funnelUserId: string;
     text: string;
     isAnswered?: boolean;
+    contentType?: string;
+    mediaUrl?: string;
   }): Promise<void> {
     await FunnelMessageModel.create({
       id: randomUUID(),
@@ -20,6 +22,8 @@ export class FunnelMessageMongoRepository {
       platform: 'whatsapp',
       timestamp: new Date(),
       isAnswered: params.isAnswered ?? false,
+      ...(params.contentType !== undefined && { contentType: params.contentType }),
+      ...(params.mediaUrl !== undefined && { mediaUrl: params.mediaUrl }),
     });
   }
 

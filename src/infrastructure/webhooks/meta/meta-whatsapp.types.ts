@@ -32,12 +32,28 @@ export interface MetaContact {
   wa_id: string;
 }
 
+export interface MetaMediaObject {
+  id: string;
+  mime_type?: string;
+  sha256?: string;
+  caption?: string;
+}
+
+export interface MetaDocumentObject extends MetaMediaObject {
+  filename?: string;
+}
+
 export interface MetaInboundMessage {
   from: string;
   id: string;
   timestamp: string;
-  type: 'text' | 'image' | 'audio' | 'document' | 'video' | 'location' | 'interactive';
+  type: 'text' | 'image' | 'audio' | 'document' | 'video' | 'location' | 'interactive' | 'sticker';
   text?: { body: string };
+  image?: MetaMediaObject;
+  document?: MetaDocumentObject;
+  audio?: MetaMediaObject;
+  video?: MetaMediaObject;
+  sticker?: MetaMediaObject;
 }
 
 export interface MetaMessageStatus {
@@ -50,12 +66,25 @@ export interface MetaMessageStatus {
 /**
  * Normalized inbound WhatsApp message after parsing Meta webhook payload.
  */
+export type ParsedMessageContentType =
+  | 'text'
+  | 'image'
+  | 'document'
+  | 'audio'
+  | 'video'
+  | 'sticker';
+
 export interface ParsedWhatsAppInboundMessage {
   waId: string;
   profileName?: string;
   text: string;
   externalMessageId: string;
   timestampMs: number;
+  contentType: ParsedMessageContentType;
+  mediaId?: string;
+  mimeType?: string;
+  fileName?: string;
+  caption?: string;
 }
 
 /**

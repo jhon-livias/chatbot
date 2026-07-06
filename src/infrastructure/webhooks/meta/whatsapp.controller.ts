@@ -4,9 +4,11 @@ import type { HandleMessageStatusUseCase } from '../../../application/use-cases/
 import type {
   MetaWebhookPayload,
   MetaWebhookVerifyQuery,
+  ParsedMessageContentType,
   ParsedWhatsAppInboundMessage,
   ParsedWhatsAppStatusUpdate,
 } from './meta-whatsapp.types.js';
+import type { MessageContentType } from '../../../domain/entities/message.entity.js';
 import type { WhatsAppParserService } from './whatsapp-parser.service.js';
 import { logger } from '../../shared/logger.js';
 import { formatMetaApiError } from './meta-api-error.js';
@@ -104,12 +106,18 @@ export class WhatsAppController {
         externalMessageId: message.externalMessageId,
         content: message.text,
         timestamp: message.timestampMs,
+        contentType: this.toDomainContentType(message.contentType),
+        ...(message.mediaId !== undefined && { mediaId: message.mediaId }),
+        ...(message.mimeType !== undefined && { mimeType: message.mimeType }),
+        ...(message.fileName !== undefined && { fileName: message.fileName }),
+        ...(message.caption !== undefined && { caption: message.caption }),
       });
 
       logger.info('[WhatsApp] Message processed', {
         waId: message.waId,
         profileName: message.profileName,
         messageId: message.externalMessageId,
+        contentType: message.contentType,
       });
     } catch (err) {
       logger.error('[WhatsApp] Error processing inbound message', {
@@ -123,5 +131,10 @@ export class WhatsAppController {
 
   private toE164(waId: string): string {
     return waId.startsWith('+') ? waId : `+${waId}`;
+  }
+
+  private toDomainContentType(type: ParsedMessageContentType): MessageContentType {
+    if (type === 'sticker') return 'image';
+    return type;
   }
 }

@@ -36,6 +36,8 @@ POST /webhook  →  webhook_secret (= App Secret)
 | GET /webhook — Invalid token | `403` |
 | POST /webhook — Invalid signature | `403` |
 | POST /webhook — Text message | `200` + respuesta en WhatsApp |
+| POST /webhook — Image message | `200` + auto-reply bot (modo bot) o cola agente (modo human) |
+| POST /webhook — Document message | `200` + auto-reply bot (modo bot) o cola agente (modo human) |
 | POST /webhook — Status update | `200` (evento ignorado) |
 
 ## Orden de prueba
@@ -44,6 +46,89 @@ POST /webhook  →  webhook_secret (= App Secret)
 2. GET /webhook — Meta verification
 3. POST /webhook — Invalid signature
 4. POST /webhook — Text message (número real en `test_wa_id`)
+5. POST /webhook — Image message (payload sample abajo)
+6. POST /webhook — Document message (payload sample abajo)
+
+## Payload samples — inbound media (M2)
+
+### Image
+
+```json
+{
+  "object": "whatsapp_business_account",
+  "entry": [{
+    "id": "WABA_ID",
+    "changes": [{
+      "field": "messages",
+      "value": {
+        "messaging_product": "whatsapp",
+        "metadata": {
+          "display_phone_number": "15550000000",
+          "phone_number_id": "1234567890"
+        },
+        "contacts": [{
+          "profile": { "name": "Lead Test" },
+          "wa_id": "51999999999"
+        }],
+        "messages": [{
+          "from": "51999999999",
+          "id": "wamid.INBOUND_IMAGE_ID",
+          "timestamp": "1710000000",
+          "type": "image",
+          "image": {
+            "caption": "Foto de mi DNI",
+            "mime_type": "image/jpeg",
+            "sha256": "abc123",
+            "id": "META_MEDIA_ID_IMAGE"
+          }
+        }]
+      }
+    }]
+  }]
+}
+```
+
+### Document (PDF)
+
+```json
+{
+  "object": "whatsapp_business_account",
+  "entry": [{
+    "id": "WABA_ID",
+    "changes": [{
+      "field": "messages",
+      "value": {
+        "messaging_product": "whatsapp",
+        "metadata": {
+          "display_phone_number": "15550000000",
+          "phone_number_id": "1234567890"
+        },
+        "contacts": [{
+          "profile": { "name": "Lead Test" },
+          "wa_id": "51999999999"
+        }],
+        "messages": [{
+          "from": "51999999999",
+          "id": "wamid.INBOUND_DOC_ID",
+          "timestamp": "1710000001",
+          "type": "document",
+          "document": {
+            "caption": "Constancia de estudios",
+            "filename": "constancia.pdf",
+            "mime_type": "application/pdf",
+            "sha256": "def456",
+            "id": "META_MEDIA_ID_DOC"
+          }
+        }]
+      }
+    }]
+  }]
+}
+```
+
+**Comportamiento esperado (modo bot):** webhook `200`, media descargada de Meta y guardada localmente, auto-reply `AUTO_REPLY_UNSUPPORTED_MEDIA`, sin llamada a DeepSeek.
+
+**Comportamiento esperado (modo human):** webhook `200`, media guardada, mensaje en inbox del agente asignado, sin auto-reply del bot.
 
 ## Sincronizar tras cambiar `.env` en el VPS
 

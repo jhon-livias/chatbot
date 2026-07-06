@@ -4,6 +4,9 @@ import type {
   OutboundTextMessage,
   OutboundMediaMessage,
   OutboundMessageResult,
+  OutboundInteractiveButtonsMessage,
+  OutboundInteractiveListMessage,
+  OutboundCtaUrlMessage,
 } from '../../../application/ports/messaging-provider.port.js';
 import { logger } from '../../shared/logger.js';
 import { formatMetaApiError } from './meta-api-error.js';
@@ -115,6 +118,122 @@ export class MetaWhatsAppAdapter implements MessagingProviderPort {
         type: message.type,
         ...formatMetaApiError(err),
       });
+      throw err;
+    }
+  }
+
+  async sendInteractiveButtons(
+    message: OutboundInteractiveButtonsMessage,
+  ): Promise<OutboundMessageResult> {
+    const to = toMetaRecipientId(message.to);
+    const buttons = message.buttons.slice(0, 3); // Meta max = 3
+
+    logger.debug('[Meta] Sending interactive buttons', { to, count: buttons.length });
+
+    try {
+      const response = await this.client.post<MetaSendMessageResponse>(
+        `/${this.phoneNumberId}/messages`,
+        {
+          messaging_product: 'whatsapp',
+          recipient_type: 'individual',
+          to,
+          type: 'interactive',
+          interactive: {
+            type: 'button',
+            body: { text: message.body },
+            action: {
+              buttons: buttons.map((b) => ({
+                type: 'reply',
+                reply: { id: b.id, title: b.title },
+              })),
+            },
+          },
+        },
+      );
+
+      const messageId = response.data.messages[0]?.id ?? '';
+      logger.debug('[Meta] Interactive buttons sent', { messageId, to });
+      return { messageId, status: 'sent' };
+    } catch (err) {
+      logger.error('[Meta] Failed to send interactive buttons', { to, ...formatMetaApiError(err) });
+      throw err;
+    }
+  }
+
+  async sendInteractiveList(
+    message: OutboundInteractiveListMessage,
+  ): Promise<OutboundMessageResult> {
+    const to = toMetaRecipientId(message.to);
+
+    logger.debug('[Meta] Sending interactive list', { to });
+
+    try {
+      const response = await this.client.post<MetaSendMessageResponse>(
+        `/${this.phoneNumberId}/messages`,
+        {
+          messaging_product: 'whatsapp',
+          recipient_type: 'individual',
+          to,
+          type: 'interactive',
+          interactive: {
+            type: 'list',
+            body: { text: message.body },
+            action: {
+              button: message.buttonText,
+              sections: message.sections.map((s) => ({
+                title: s.title,
+                rows: s.rows.map((r) => ({
+                  id: r.id,
+                  title: r.title,
+                  ...(r.description !== undefined && { description: r.description }),
+                })),
+              })),
+            },
+          },
+        },
+      );
+
+      const messageId = response.data.messages[0]?.id ?? '';
+      logger.debug('[Meta] Interactive list sent', { messageId, to });
+      return { messageId, status: 'sent' };
+    } catch (err) {
+      logger.error('[Meta] Failed to send interactive list', { to, ...formatMetaApiError(err) });
+      throw err;
+    }
+  }
+
+  async sendCtaUrl(message: OutboundCtaUrlMessage): Promise<OutboundMessageResult> {
+    const to = toMetaRecipientId(message.to);
+
+    logger.debug('[Meta] Sending CTA URL', { to, url: message.url });
+
+    try {
+      const response = await this.client.post<MetaSendMessageResponse>(
+        `/${this.phoneNumberId}/messages`,
+        {
+          messaging_product: 'whatsapp',
+          recipient_type: 'individual',
+          to,
+          type: 'interactive',
+          interactive: {
+            type: 'cta_url',
+            body: { text: message.body },
+            action: {
+              name: 'cta_url',
+              parameters: {
+                display_text: message.displayText,
+                url: message.url,
+              },
+            },
+          },
+        },
+      );
+
+      const messageId = response.data.messages[0]?.id ?? '';
+      logger.debug('[Meta] CTA URL sent', { messageId, to });
+      return { messageId, status: 'sent' };
+    } catch (err) {
+      logger.error('[Meta] Failed to send CTA URL', { to, ...formatMetaApiError(err) });
       throw err;
     }
   }

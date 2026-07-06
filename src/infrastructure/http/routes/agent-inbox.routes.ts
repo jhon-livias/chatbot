@@ -13,6 +13,7 @@ import { PinConversationUseCase } from '../../../application/use-cases/agent-inb
 import { ArchiveConversationUseCase } from '../../../application/use-cases/agent-inbox/archive-conversation.usecase.js';
 import { AddInternalNoteUseCase } from '../../../application/use-cases/agent-inbox/add-internal-note.usecase.js';
 import { ReassignConversationUseCase } from '../../../application/use-cases/agent-inbox/reassign-conversation.usecase.js';
+import { SendInteractiveMessageUseCase } from '../../../application/use-cases/agent-inbox/send-interactive-message.usecase.js';
 import { ForbiddenError } from '../../../application/services/conversation-access.service.js';
 import type { ConversationRepository } from '../../../domain/repositories/conversation.repository.js';
 import type { MessagingProviderPort } from '../../../application/ports/messaging-provider.port.js';
@@ -86,6 +87,12 @@ export function createAgentInboxRouter(
   const updateLabels = new UpdateLabelsUseCase(conversationRepo);
   const pinConversation = new PinConversationUseCase(conversationRepo);
   const archiveConversation = new ArchiveConversationUseCase(conversationRepo);
+  const sendInteractive = new SendInteractiveMessageUseCase(
+    conversationRepo,
+    messagingProvider,
+    funnelMessageRepo,
+    realtimeNotifier,
+  );
   const addNote = new AddInternalNoteUseCase(conversationRepo, realtimeNotifier);
   const reassign = new ReassignConversationUseCase(conversationRepo, agentRepo);
 
@@ -495,6 +502,76 @@ export function createAgentInboxRouter(
       if (err instanceof Error && (err.message === 'Conversación no encontrada' || err.message === 'Agente destino no encontrado')) {
         res.status(404).json({ error: err.message }); return;
       }
+      throw err;
+    }
+  });
+
+  // ── B1 Interactive buttons ──────────────────────────────────────────────────
+  // POST /api/v1/conversations/:id/interactive-buttons
+  router.post('/api/v1/conversations/:id/interactive-buttons', async (req: Request, res: Response) => {
+    const agentId = req.agent!.id;
+    const conversationId = String(req.params['id']);
+    const body = typeof req.body?.body === 'string' ? req.body.body : '';
+    const buttons = Array.isArray(req.body?.buttons) ? req.body.buttons : [];
+
+    if (!body.trim()) { res.status(400).json({ error: 'body es requerido' }); return; }
+    if (!buttons.length) { res.status(400).json({ error: 'buttons[] es requerido (máx 3)' }); return; }
+
+    try {
+      const result = await sendInteractive.execute({ type: 'buttons', conversationId, agentId, body, buttons });
+      res.status(201).json(result);
+    } catch (err) {
+      if (err instanceof ForbiddenError) { res.status(403).json({ error: err.message }); return; }
+      if (err instanceof Error && err.message === 'Conversación no encontrada') { res.status(404).json({ error: err.message }); return; }
+      if (err instanceof Error) { res.status(422).json({ error: err.message }); return; }
+      throw err;
+    }
+  });
+
+  // ── B2 Interactive list ─────────────────────────────────────────────────────
+  // POST /api/v1/conversations/:id/interactive-list
+  router.post('/api/v1/conversations/:id/interactive-list', async (req: Request, res: Response) => {
+    const agentId = req.agent!.id;
+    const conversationId = String(req.params['id']);
+    const body = typeof req.body?.body === 'string' ? req.body.body : '';
+    const buttonText = typeof req.body?.buttonText === 'string' ? req.body.buttonText : '';
+    const sections = Array.isArray(req.body?.sections) ? req.body.sections : [];
+
+    if (!body.trim()) { res.status(400).json({ error: 'body es requerido' }); return; }
+    if (!buttonText.trim()) { res.status(400).json({ error: 'buttonText es requerido' }); return; }
+    if (!sections.length) { res.status(400).json({ error: 'sections[] es requerido' }); return; }
+
+    try {
+      const result = await sendInteractive.execute({ type: 'list', conversationId, agentId, body, buttonText, sections });
+      res.status(201).json(result);
+    } catch (err) {
+      if (err instanceof ForbiddenError) { res.status(403).json({ error: err.message }); return; }
+      if (err instanceof Error && err.message === 'Conversación no encontrada') { res.status(404).json({ error: err.message }); return; }
+      if (err instanceof Error) { res.status(422).json({ error: err.message }); return; }
+      throw err;
+    }
+  });
+
+  // ── B3 CTA URL ──────────────────────────────────────────────────────────────
+  // POST /api/v1/conversations/:id/cta-url
+  router.post('/api/v1/conversations/:id/cta-url', async (req: Request, res: Response) => {
+    const agentId = req.agent!.id;
+    const conversationId = String(req.params['id']);
+    const body = typeof req.body?.body === 'string' ? req.body.body : '';
+    const displayText = typeof req.body?.displayText === 'string' ? req.body.displayText : '';
+    const url = typeof req.body?.url === 'string' ? req.body.url : '';
+
+    if (!body.trim()) { res.status(400).json({ error: 'body es requerido' }); return; }
+    if (!displayText.trim()) { res.status(400).json({ error: 'displayText es requerido' }); return; }
+    if (!url.trim()) { res.status(400).json({ error: 'url es requerido' }); return; }
+
+    try {
+      const result = await sendInteractive.execute({ type: 'cta_url', conversationId, agentId, body, displayText, url });
+      res.status(201).json(result);
+    } catch (err) {
+      if (err instanceof ForbiddenError) { res.status(403).json({ error: err.message }); return; }
+      if (err instanceof Error && err.message === 'Conversación no encontrada') { res.status(404).json({ error: err.message }); return; }
+      if (err instanceof Error) { res.status(422).json({ error: err.message }); return; }
       throw err;
     }
   });

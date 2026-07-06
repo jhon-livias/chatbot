@@ -120,6 +120,38 @@ export class WhatsAppParserService {
           ...(caption !== undefined && { caption }),
         };
       }
+      case 'interactive': {
+        const interactive = message.interactive;
+        if (!interactive) {
+          logger.debug('[WhatsApp] Interactive message missing payload', { messageId: message.id });
+          return null;
+        }
+
+        let text: string;
+        switch (interactive.type) {
+          case 'button_reply':
+            // Prefer title (human-readable) over id for AI context
+            text = interactive.button_reply?.title ?? interactive.button_reply?.id ?? '[button_reply]';
+            break;
+          case 'list_reply':
+            text = interactive.list_reply?.title ?? interactive.list_reply?.id ?? '[list_reply]';
+            break;
+          case 'nfm_reply':
+            // Normalize form reply body; the full JSON is available in response_json if needed
+            text = interactive.nfm_reply?.body ?? '[nfm_reply]';
+            break;
+          default:
+            text = '[interactive]';
+        }
+
+        logger.debug('[WhatsApp] Interactive inbound parsed', {
+          messageId: message.id,
+          interactiveType: interactive.type,
+          text,
+        });
+
+        return { ...base, text, contentType: 'text' };
+      }
       case 'sticker':
       case 'video':
       case 'audio': {

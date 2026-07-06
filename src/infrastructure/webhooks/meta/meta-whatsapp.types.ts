@@ -43,6 +43,33 @@ export interface MetaDocumentObject extends MetaMediaObject {
   filename?: string;
 }
 
+// ── Interactive inbound (reply to button / list / CTA) ────────────────────
+
+export interface MetaInteractiveButtonReply {
+  id: string;
+  title: string;
+}
+
+export interface MetaInteractiveListReply {
+  id: string;
+  title: string;
+  description?: string;
+}
+
+export interface MetaInteractiveNfmReply {
+  /** Flow/form name. */
+  name: string;
+  response_json: string;
+  body: string;
+}
+
+export interface MetaInteractivePayload {
+  type: 'button_reply' | 'list_reply' | 'nfm_reply';
+  button_reply?: MetaInteractiveButtonReply;
+  list_reply?: MetaInteractiveListReply;
+  nfm_reply?: MetaInteractiveNfmReply;
+}
+
 export interface MetaInboundMessage {
   from: string;
   id: string;
@@ -54,6 +81,7 @@ export interface MetaInboundMessage {
   audio?: MetaMediaObject;
   video?: MetaMediaObject;
   sticker?: MetaMediaObject;
+  interactive?: MetaInteractivePayload;
 }
 
 export interface MetaMessageStatus {

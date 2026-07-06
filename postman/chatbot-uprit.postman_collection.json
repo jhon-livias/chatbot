@@ -199,6 +199,166 @@
       "response": []
     },
     {
+      "name": "POST /conversations/:id/interactive-buttons — B1",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 201', () => pm.response.to.have.status(201));",
+              "pm.test('Has messageId', () => {",
+              "    const json = pm.response.json();",
+              "    pm.expect(json.messageId).to.be.a('string').and.not.empty;",
+              "    pm.expect(json.status).to.eql('sent');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{agent_token}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"body\": \"¿Cómo podemos ayudarte hoy?\",\n  \"buttons\": [\n    { \"id\": \"opt_info\",    \"title\": \"Información\" },\n    { \"id\": \"opt_soporte\", \"title\": \"Soporte\" },\n    { \"id\": \"opt_otro\",    \"title\": \"Otro tema\" }\n  ]\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/conversations/{{conversation_id}}/interactive-buttons",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "conversations", "{{conversation_id}}", "interactive-buttons"]
+        },
+        "description": "B1 — Envía hasta 3 botones de respuesta rápida (button_reply) al lead en WhatsApp. Requiere conversación en modo humano y ventana 24h abierta."
+      },
+      "response": []
+    },
+    {
+      "name": "POST /conversations/:id/interactive-list — B2",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 201', () => pm.response.to.have.status(201));",
+              "pm.test('Has messageId', () => {",
+              "    const json = pm.response.json();",
+              "    pm.expect(json.messageId).to.be.a('string').and.not.empty;",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{agent_token}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"body\": \"Elige una carrera para recibir información:\",\n  \"buttonText\": \"Ver carreras\",\n  \"sections\": [\n    {\n      \"title\": \"Pregrado\",\n      \"rows\": [\n        { \"id\": \"car_admin\",   \"title\": \"Administración\",    \"description\": \"Duración 5 años\" },\n        { \"id\": \"car_sistemas\",\"title\": \"Ing. de Sistemas\",  \"description\": \"Duración 5 años\" },\n        { \"id\": \"car_derecho\", \"title\": \"Derecho\",            \"description\": \"Duración 5 años\" }\n      ]\n    }\n  ]\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/conversations/{{conversation_id}}/interactive-list",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "conversations", "{{conversation_id}}", "interactive-list"]
+        },
+        "description": "B2 — Envía un mensaje de lista interactiva (list_reply) con secciones y filas. Requiere conversación en modo humano y ventana 24h abierta."
+      },
+      "response": []
+    },
+    {
+      "name": "POST /conversations/:id/cta-url — B3",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 201', () => pm.response.to.have.status(201));",
+              "pm.test('Has messageId', () => {",
+              "    const json = pm.response.json();",
+              "    pm.expect(json.messageId).to.be.a('string').and.not.empty;",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{agent_token}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"body\": \"Completa tu preinscripción en línea:\",\n  \"displayText\": \"Ir al portal\",\n  \"url\": \"https://admision.uprit.edu.pe/preinscripcion\"\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/conversations/{{conversation_id}}/cta-url",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "conversations", "{{conversation_id}}", "cta-url"]
+        },
+        "description": "B3 — Envía un botón CTA URL (type=cta_url, Meta API v20+). El lead puede abrir la URL directamente desde el mensaje."
+      },
+      "response": []
+    },
+    {
+      "name": "POST /webhook — Inbound interactive button_reply",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const secret = pm.environment.get('webhook_secret');",
+              "const rawBody = pm.variables.replaceIn(pm.request.body.raw);",
+              "const signature = CryptoJS.HmacSHA256(rawBody, secret).toString(CryptoJS.enc.Hex);",
+              "pm.request.headers.upsert({ key: 'x-hub-signature-256', value: 'sha256=' + signature });",
+              "pm.request.body.update(rawBody);"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "pm.test('Inbound interactive processed', () => {",
+              "    pm.expect(pm.response.text()).to.be.a('string');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"object\": \"whatsapp_business_account\",\n  \"entry\": [\n    {\n      \"id\": \"WHATSAPP_BUSINESS_ACCOUNT_ID\",\n      \"changes\": [\n        {\n          \"field\": \"messages\",\n          \"value\": {\n            \"messaging_product\": \"whatsapp\",\n            \"metadata\": {\n              \"display_phone_number\": \"15551234567\",\n              \"phone_number_id\": \"1234567890\"\n            },\n            \"contacts\": [\n              { \"profile\": { \"name\": \"Alumno Demo\" }, \"wa_id\": \"{{test_wa_id}}\" }\n            ],\n            \"messages\": [\n              {\n                \"from\": \"{{test_wa_id}}\",\n                \"id\": \"wamid.interactive.button.001\",\n                \"timestamp\": \"1719900100\",\n                \"type\": \"interactive\",\n                \"interactive\": {\n                  \"type\": \"button_reply\",\n                  \"button_reply\": {\n                    \"id\": \"opt_info\",\n                    \"title\": \"Información\"\n                  }\n                }\n              }\n            ]\n          }\n        }\n      ]\n    }\n  ]\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": {
+          "raw": "{{base_url}}/webhook",
+          "host": ["{{base_url}}"],
+          "path": ["webhook"]
+        },
+        "description": "B1 inbound — Simula la respuesta de un lead a un mensaje de botones. El parser normaliza button_reply.title a texto para el HandleIncomingMessageUseCase."
+      },
+      "response": []
+    },
+    {
       "name": "POST /webhook — Status update (ignored, 200)",
       "event": [
         {

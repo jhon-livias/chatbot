@@ -79,5 +79,8 @@ const conversationSchema = new Schema<ConversationDocument>(
 
 conversationSchema.index({ phoneNumber: 1, status: 1 });
 conversationSchema.index({ mode: 1, assignedAgentId: 1, status: 1 });
+conversationSchema.index({ unreadCountAgent: 1 });
+conversationSchema.index({ lastUserMessageAt: -1 });
+conversationSchema.index({ mode: 1, status: 1, assignedAgentId: 1, unreadCountAgent: 1 });
 
 export const ConversationModel = model<ConversationDocument>('Conversation', conversationSchema);

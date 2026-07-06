@@ -81,13 +81,27 @@ export function createAgentInboxRouter(
 
   router.use('/api/v1', authenticateAgentJwt);
 
-  // GET /api/v1/inbox
+  // GET /api/v1/inbox — filter=unread|unanswered|own|bot, inboxFilter=own|bot, q=search
   router.get('/api/v1/inbox', async (req: Request, res: Response) => {
     const agentId = req.agent!.id;
     const role = req.agent!.role;
     const filterRaw = req.query['filter'];
-    const inboxFilter =
-      filterRaw === 'bot' || filterRaw === 'own' ? filterRaw : undefined;
+    const inboxFilterRaw = req.query['inboxFilter'];
+
+    let inboxFilter: 'own' | 'bot' | undefined;
+    if (inboxFilterRaw === 'bot' || inboxFilterRaw === 'own') {
+      inboxFilter = inboxFilterRaw;
+    } else if (filterRaw === 'bot' || filterRaw === 'own') {
+      inboxFilter = filterRaw;
+    }
+
+    let listFilter: 'unread' | 'unanswered' | undefined;
+    if (filterRaw === 'unread' || filterRaw === 'unanswered') {
+      listFilter = filterRaw;
+    }
+
+    const q = typeof req.query['q'] === 'string' ? req.query['q'].trim() : undefined;
+
     const defaultLimit = role === 'admin' ? 100 : inboxFilter === 'bot' ? 100 : 20;
     const limit = Number(req.query['limit'] ?? defaultLimit);
     const offset = Number(req.query['offset'] ?? 0);
@@ -104,6 +118,8 @@ export function createAgentInboxRouter(
       offset,
       ...(since !== undefined && { since }),
       ...(inboxFilter !== undefined && { inboxFilter }),
+      ...(listFilter !== undefined && { listFilter }),
+      ...(q && { q }),
     });
     res.json(result);
   });

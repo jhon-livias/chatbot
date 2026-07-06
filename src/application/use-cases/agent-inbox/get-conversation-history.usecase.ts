@@ -8,6 +8,7 @@ import {
 } from '../../services/conversation-access.service.js';
 import type { Message } from '../../../domain/entities/message.entity.js';
 import type { FunnelUserMongoRepository } from '../../../infrastructure/database/mongodb/repositories/funnel-user.mongo-repository.js';
+import { computeCsWindow } from '../../services/cs-window.service.js';
 
 export { ForbiddenError };
 
@@ -47,6 +48,8 @@ export interface GetConversationHistoryOutput {
   assignedAgentId: string | null;
   assignedAgentName: string | null;
   unreadCountAgent: number;
+  csWindowOpen: boolean;
+  csWindowExpiresAt: string | null;
   messages: MessageDto[];
 }
 
@@ -85,6 +88,7 @@ export class GetConversationHistoryUseCase {
         : Promise.resolve(null),
     ]);
     const contactName = funnelUser?.name ?? user?.name ?? null;
+    const csWindow = computeCsWindow(conversation.lastUserMessageAt);
 
     return {
       conversationId: conversation.id,
@@ -96,6 +100,8 @@ export class GetConversationHistoryUseCase {
       assignedAgentId: conversation.assignedAgentId,
       assignedAgentName: assignedAgent?.name ?? null,
       unreadCountAgent: conversation.unreadCountAgent,
+      csWindowOpen: csWindow.csWindowOpen,
+      csWindowExpiresAt: csWindow.csWindowExpiresAt,
       messages: msgs.map((m) => ({
         id: m.id.value,
         role: m.role,

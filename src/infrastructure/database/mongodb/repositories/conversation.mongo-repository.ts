@@ -1,4 +1,5 @@
-import type { ConversationRepository } from '../../../../domain/repositories/conversation.repository.js';
+import type { ConversationRepository, InboxPagination } from '../../../../domain/repositories/conversation.repository.js';
+import type { InboxQueryFilters } from '../../../../domain/types/inbox-query-filters.js';
 import {
   Conversation,
   type HandoffState,
@@ -38,13 +39,18 @@ export class ConversationMongoRepository implements ConversationRepository {
 
   async findHumanByAgentId(
     agentId: string,
-    opts: { limit: number; offset: number },
+    opts: InboxPagination,
   ): Promise<Conversation[]> {
-    const docs = await ConversationModel.find({
-      mode: 'human',
-      status: 'active',
-      assignedAgentId: agentId,
-    })
+    const query = this.applyInboxFilters(
+      {
+        mode: 'human',
+        status: 'active',
+        assignedAgentId: agentId,
+      },
+      opts.filters,
+    );
+
+    const docs = await ConversationModel.find(query)
       .sort({ updatedAt: -1 })
       .skip(opts.offset)
       .limit(opts.limit)
@@ -53,24 +59,31 @@ export class ConversationMongoRepository implements ConversationRepository {
     return docs.map((doc) => this.toDomain(doc, []));
   }
 
-  async countHumanByAgentId(agentId: string): Promise<number> {
-    return ConversationModel.countDocuments({
-      mode: 'human',
-      status: 'active',
-      assignedAgentId: agentId,
-    });
+  async countHumanByAgentId(agentId: string, filters?: InboxQueryFilters): Promise<number> {
+    const query = this.applyInboxFilters(
+      {
+        mode: 'human',
+        status: 'active',
+        assignedAgentId: agentId,
+      },
+      filters,
+    );
+    return ConversationModel.countDocuments(query);
   }
 
   async findBotModeForInbox(opts: {
     since: Date;
-    limit: number;
-    offset: number;
-  }): Promise<Conversation[]> {
-    const docs = await ConversationModel.find({
-      mode: 'bot',
-      status: 'active',
-      $or: [{ updatedAt: { $gte: opts.since } }, { lastUserMessageAt: { $gte: opts.since } }],
-    })
+  } & InboxPagination): Promise<Conversation[]> {
+    const query = this.applyInboxFilters(
+      {
+        mode: 'bot',
+        status: 'active',
+        $or: [{ updatedAt: { $gte: opts.since } }, { lastUserMessageAt: { $gte: opts.since } }],
+      },
+      opts.filters,
+    );
+
+    const docs = await ConversationModel.find(query)
       .sort({ updatedAt: -1 })
       .skip(opts.offset)
       .limit(opts.limit)
@@ -79,12 +92,81 @@ export class ConversationMongoRepository implements ConversationRepository {
     return docs.map((doc) => this.toDomain(doc, []));
   }
 
-  async countBotModeForInbox(since: Date): Promise<number> {
-    return ConversationModel.countDocuments({
-      mode: 'bot',
-      status: 'active',
-      $or: [{ updatedAt: { $gte: since } }, { lastUserMessageAt: { $gte: since } }],
-    });
+  async countBotModeForInbox(since: Date, filters?: InboxQueryFilters): Promise<number> {
+    const query = this.applyInboxFilters(
+      {
+        mode: 'bot',
+        status: 'active',
+        $or: [{ updatedAt: { $gte: since } }, { lastUserMessageAt: { $gte: since } }],
+      },
+      filters,
+    );
+    return ConversationModel.countDocuments(query);
+  }
+
+  async findAdminInbox(opts: { since: Date } & InboxPagination): Promise<Conversation[]> {
+    const query = this.applyInboxFilters(
+      {
+        status: 'active',
+        $or: [{ updatedAt: { $gte: opts.since } }, { lastUserMessageAt: { $gte: opts.since } }],
+      },
+      opts.filters,
+    );
+
+    const docs = await ConversationModel.find(query)
+      .sort({ updatedAt: -1 })
+      .skip(opts.offset)
+      .limit(opts.limit)
+      .lean();
+
+    return docs.map((doc) => this.toDomain(doc, []));
+  }
+
+  async countAdminInbox(since: Date, filters?: InboxQueryFilters): Promise<number> {
+    const query = this.applyInboxFilters(
+      {
+        status: 'active',
+        $or: [{ updatedAt: { $gte: since } }, { lastUserMessageAt: { $gte: since } }],
+      },
+      filters,
+    );
+    return ConversationModel.countDocuments(query);
+  }
+
+  private applyInboxFilters(
+    base: Record<string, unknown>,
+    filters?: InboxQueryFilters,
+  ): Record<string, unknown> {
+    if (!filters) return base;
+
+    const clauses: Record<string, unknown>[] = [base];
+
+    if (filters.unreadOnly) {
+      clauses.push({ unreadCountAgent: { $gt: 0 } });
+    }
+
+    if (filters.unansweredOnly) {
+      clauses.push({
+        lastUserMessageAt: { $ne: null },
+        $or: [
+          { lastAgentMessageAt: null },
+          { $expr: { $gt: ['$lastUserMessageAt', '$lastAgentMessageAt'] } },
+        ],
+      });
+    }
+
+    if (filters.searchQuery) {
+      const escaped = filters.searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const searchOr: Record<string, unknown>[] = [
+        { phoneNumber: { $regex: escaped, $options: 'i' } },
+      ];
+      if (filters.searchPhoneNumbers?.length) {
+        searchOr.push({ phoneNumber: { $in: filters.searchPhoneNumbers } });
+      }
+      clauses.push({ $or: searchOr });
+    }
+
+    return clauses.length === 1 ? base : { $and: clauses };
   }
 
   async findLatestByPhoneNumbers(phoneNumbers: string[]): Promise<Map<string, Conversation>> {

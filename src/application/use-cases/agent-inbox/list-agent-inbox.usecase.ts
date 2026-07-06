@@ -3,7 +3,10 @@ import type { UserRepository } from '../../../domain/repositories/user.repositor
 import type { AgentRepository } from '../../../domain/repositories/agent.repository.js';
 import type { AgentRole } from '../../../domain/entities/agent.entity.js';
 import type { Conversation } from '../../../domain/entities/conversation.entity.js';
+import type { InboxListFilter } from '../../../domain/types/inbox-query-filters.js';
+import { buildInboxQueryFilters } from '../../../domain/types/inbox-query-filters.js';
 import type { FunnelUserMongoRepository } from '../../../infrastructure/database/mongodb/repositories/funnel-user.mongo-repository.js';
+import { computeCsWindow } from '../../services/cs-window.service.js';
 import { startOfCurrentMonth } from '../../../infrastructure/shared/start-of-month.js';
 
 export interface ListAgentInboxInput {
@@ -15,6 +18,10 @@ export interface ListAgentInboxInput {
   since?: Date;
   /** Agent inbox scope: own assigned chats (default) or bot-mode for review. */
   inboxFilter?: 'own' | 'bot';
+  /** C6 C7 — unread | unanswered (combinable with inboxFilter). */
+  listFilter?: InboxListFilter;
+  /** C12 — search by phone or contact name (case insensitive). */
+  q?: string;
 }
 
 export interface ListAgentInboxOutput {
@@ -37,6 +44,8 @@ export interface ConversationSummary {
   handoffAt: Date | null;
   lastUserMessageAt: Date | null;
   lastAgentMessageAt: Date | null;
+  csWindowOpen: boolean;
+  csWindowExpiresAt: string | null;
   updatedAt: Date;
   createdAt: Date;
 }
@@ -55,36 +64,64 @@ export class ListAgentInboxUseCase {
     const maxLimit = isAdmin ? 200 : 100;
     const limit = Math.min(input.limit ?? defaultLimit, maxLimit);
     const offset = input.offset ?? 0;
+    const filters = await this.resolveFilters(input);
 
     if (isAdmin) {
-      return this.listAdminInbox(input, limit, offset);
+      return this.listAdminInbox(input, limit, offset, filters);
     }
 
     const since = input.since ?? startOfCurrentMonth();
     const inboxFilter = input.inboxFilter ?? 'own';
+    const pagination = { limit, offset, ...(filters !== undefined && { filters }) };
 
     if (inboxFilter === 'bot') {
       const [conversations, total] = await Promise.all([
-        this.conversationRepo.findBotModeForInbox({ since, limit, offset }),
-        this.conversationRepo.countBotModeForInbox(since),
+        this.conversationRepo.findBotModeForInbox({ since, ...pagination }),
+        this.conversationRepo.countBotModeForInbox(since, filters),
       ]);
       return this.buildOutput(conversations, total, limit, offset);
     }
 
     const [conversations, total] = await Promise.all([
-      this.conversationRepo.findHumanByAgentId(input.agentId, { limit, offset }),
-      this.conversationRepo.countHumanByAgentId(input.agentId),
+      this.conversationRepo.findHumanByAgentId(input.agentId, pagination),
+      this.conversationRepo.countHumanByAgentId(input.agentId, filters),
     ]);
 
     return this.buildOutput(conversations, total, limit, offset);
+  }
+
+  private async resolveFilters(input: ListAgentInboxInput) {
+    const searchPhoneNumbers = input.q?.trim()
+      ? await this.funnelUserRepo.findSenderIdsByNameQuery(input.q)
+      : undefined;
+
+    return buildInboxQueryFilters({
+      ...(input.listFilter !== undefined && { listFilter: input.listFilter }),
+      ...(input.q?.trim() && { q: input.q.trim() }),
+      ...(searchPhoneNumbers?.length && { searchPhoneNumbers }),
+    });
+  }
+
+  private hasConversationFilters(input: ListAgentInboxInput): boolean {
+    return Boolean(input.listFilter || input.q?.trim());
   }
 
   private async listAdminInbox(
     input: ListAgentInboxInput,
     limit: number,
     offset: number,
+    filters: Awaited<ReturnType<typeof this.resolveFilters>>,
   ): Promise<ListAgentInboxOutput> {
     const since = input.since ?? startOfCurrentMonth();
+
+    if (this.hasConversationFilters(input)) {
+      const pagination = { limit, offset, ...(filters !== undefined && { filters }) };
+      const [conversations, total] = await Promise.all([
+        this.conversationRepo.findAdminInbox({ since, ...pagination }),
+        this.conversationRepo.countAdminInbox(since, filters),
+      ]);
+      return this.buildOutput(conversations, total, limit, offset);
+    }
 
     const [funnelLeads, total] = await Promise.all([
       this.funnelUserRepo.findForAdminInbox({ since, limit, offset }),
@@ -105,8 +142,7 @@ export class ListAgentInboxUseCase {
       if (lead.name?.trim()) funnelNames.set(key, lead.name.trim());
     }
 
-    const output = await this.buildOutput(conversations, total, limit, offset, funnelNames);
-    return output;
+    return this.buildOutput(conversations, total, limit, offset, funnelNames);
   }
 
   private async buildOutput(
@@ -156,6 +192,7 @@ export class ListAgentInboxUseCase {
   ): ConversationSummary {
     const phoneKey = c.phoneNumber.replace(/^\+/, '');
     const contactName = funnelNames.get(phoneKey) ?? userNames.get(c.userId) ?? null;
+    const csWindow = computeCsWindow(c.lastUserMessageAt);
 
     return {
       id: c.id,
@@ -170,6 +207,8 @@ export class ListAgentInboxUseCase {
       handoffAt: c.handoffAt,
       lastUserMessageAt: c.lastUserMessageAt,
       lastAgentMessageAt: c.lastAgentMessageAt,
+      csWindowOpen: csWindow.csWindowOpen,
+      csWindowExpiresAt: csWindow.csWindowExpiresAt,
       updatedAt: c.updatedAt,
       createdAt: c.createdAt,
     };

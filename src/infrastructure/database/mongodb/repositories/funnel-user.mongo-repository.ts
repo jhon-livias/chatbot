@@ -159,6 +159,27 @@ export class FunnelUserMongoRepository {
     });
   }
 
+  /** Resolve funnel_users.name matches to phone variants for inbox search (q=). */
+  async findSenderIdsByNameQuery(query: string): Promise<string[]> {
+    const term = query.trim();
+    if (!term) return [];
+
+    const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const docs = await FunnelUserModel.find({
+      name: { $regex: escaped, $options: 'i' },
+    })
+      .select('senderId')
+      .lean();
+
+    const variants = new Set<string>();
+    for (const doc of docs) {
+      const normalized = this.normalizeSenderId(String(doc.senderId));
+      variants.add(normalized);
+      variants.add(`+${normalized}`);
+    }
+    return [...variants];
+  }
+
   /** Batch lookup display names keyed by normalized phone (no leading +). */
   async findNamesBySenderIds(senderIds: string[]): Promise<Map<string, string>> {
     if (senderIds.length === 0) return new Map();

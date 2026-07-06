@@ -96,12 +96,6 @@ function matchesSearch(conv: ConversationSummary, q: string): boolean {
   )
 }
 
-function matchesLabelFilter(conv: ConversationSummary, label: string): boolean {
-  const needle = label.trim().toLowerCase()
-  if (!needle) return true
-  return (conv.labels ?? []).some((l) => l.toLowerCase().includes(needle))
-}
-
 /** Sync with ALLOWED_AGENT_MEDIA_MIMES (agent-media-upload.middleware.ts) */
 const ALLOWED_MIME = new Set([
   'image/jpeg', 'image/png', 'image/webp', 'image/gif',
@@ -889,8 +883,6 @@ export default function DashboardPage() {
   const [listFilter, setListFilter] = useState<InboxListFilter>('all')
   const [searchInput, setSearchInput] = useState('')
   const searchQuery = useDebounced(searchInput, 300)
-  const [labelInput, setLabelInput] = useState('')
-  const labelFilter = useDebounced(labelInput, 400)
   const [includeArchived, setIncludeArchived] = useState(false)
   const [adminFilter, setAdminFilter] = useState<AdminInboxFilter>('all')
 
@@ -899,7 +891,6 @@ export default function DashboardPage() {
     agentFilter: isAdmin ? undefined : agentFilter,
     listFilter: isAdmin ? 'all' : listFilter,
     searchQuery,
-    label: labelFilter,
     includeArchived: isAdmin ? includeArchived : false,
     activeConversationId: id,
   })
@@ -912,14 +903,11 @@ export default function DashboardPage() {
     if (searchQuery.trim()) {
       list = list.filter((c) => matchesSearch(c, searchQuery))
     }
-    if (labelFilter.trim()) {
-      list = list.filter((c) => matchesLabelFilter(c, labelFilter))
-    }
     return list
-  }, [conversations, isAdmin, adminFilter, searchQuery, labelFilter])
+  }, [conversations, isAdmin, adminFilter, searchQuery])
 
   const hasActiveFilters = Boolean(
-    searchQuery.trim() || labelFilter.trim() || (isAdmin && adminFilter !== 'all'),
+    searchQuery.trim() || (isAdmin && adminFilter !== 'all'),
   )
   const displayTotal = hasActiveFilters ? filteredConversations.length : total
   const hasChatOpen = Boolean(id)
@@ -1049,25 +1037,6 @@ export default function DashboardPage() {
               )}
             </div>
           </div>
-          <div className="dash-filter-field">
-            <span className="dash-filter-label">Etiqueta</span>
-            <div className="dash-search dash-search--compact">
-              <svg viewBox="0 0 20 20" fill="currentColor" width="13" height="13" className="dash-search-icon" aria-hidden>
-                <path fillRule="evenodd" d="M17.707 9.293a1 1 0 010 1.414l-7 7a1 1 0 01-1.414 0l-7-7A.997.997 0 013 10V5a3 3 0 013-3h5c.256 0 .512.098.707.293l7 7zM5 6a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd"/>
-              </svg>
-              <input
-                type="search"
-                className="dash-search-input dash-search-input--label"
-                placeholder="ej. interesado…"
-                value={labelInput}
-                onChange={(e) => setLabelInput(e.target.value.toLowerCase())}
-                autoComplete="off"
-              />
-              {labelInput && (
-                <button type="button" className="dash-search-clear" onClick={() => setLabelInput('')} title="Limpiar">✕</button>
-              )}
-            </div>
-          </div>
         </div>
 
         <ul className="dash-conv-list">
@@ -1083,7 +1052,7 @@ export default function DashboardPage() {
             <li className="dash-conv-empty">
               <span style={{ fontSize: '2rem' }}>📭</span>
               <span>
-                {searchQuery || labelFilter
+                {searchQuery
                   ? 'Sin resultados para tu búsqueda'
                   : listFilter === 'unread'
                     ? 'Sin chats no leídos'

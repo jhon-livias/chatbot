@@ -172,7 +172,8 @@ export class ConversationMongoRepository implements ConversationRepository {
     }
 
     if (filters.label) {
-      clauses.push({ labels: filters.label });
+      const escaped = filters.label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      clauses.push({ labels: { $regex: escaped, $options: 'i' } });
     }
 
     return clauses.length === 1 ? baseWithArchived : { $and: clauses };

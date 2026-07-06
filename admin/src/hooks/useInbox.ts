@@ -74,7 +74,9 @@ export function useInbox(options: UseInboxOptions = {}) {
         if (isAdmin) {
           params.set('limit', '100')
         } else if (agentFilter === 'bot') {
+          // filter=bot — prod actual; inboxFilter=bot — API nueva (M4+)
           params.set('filter', 'bot')
+          params.set('inboxFilter', 'bot')
           params.set('limit', '100')
         }
 

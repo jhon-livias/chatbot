@@ -782,6 +782,44 @@ body { min-height: 100dvh; }
 }
 .dash-search-clear:hover { color: var(--dash-text); }
 
+/* ── Filter bar (search + label) ─────────────────────────── */
+.dash-filter-bar {
+  display: flex;
+  flex-direction: column;
+  gap: .45rem;
+  margin: .5rem .85rem .35rem;
+  padding: .55rem .65rem;
+  background: rgba(255,255,255,.04);
+  border: 1px solid var(--dash-border);
+  border-radius: 10px;
+}
+.dash-filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: .2rem;
+  min-width: 0;
+}
+.dash-filter-label {
+  font-size: .65rem;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--dash-muted);
+  padding-left: .1rem;
+}
+.dash-search--compact {
+  margin: 0;
+}
+.dash-search--compact .dash-search-input {
+  padding-top: .4rem;
+  padding-bottom: .4rem;
+  font-size: .78rem;
+  background: rgba(0,0,0,.18);
+}
+.dash-search-input--label:focus {
+  border-color: rgba(124, 58, 237, .55);
+}
+
 /* ── M5: Secondary filter row ────────────────────────────── */
 .dash-filters--secondary {
   border-top: none;

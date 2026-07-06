@@ -11,6 +11,8 @@ admin/node_modules/
 .env
 .env.local
 .env.*.local
+.env.prod
+.env.local.bak
 
 # Logs
 logs/

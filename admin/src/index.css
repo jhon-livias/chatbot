@@ -245,7 +245,7 @@ body { min-height: 100dvh; }
 
 /* ── Sidebar ─────────────────────────────────────────────── */
 .dash-sidebar {
-  width: 280px;
+  width: 340px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -376,17 +376,9 @@ body { min-height: 100dvh; }
   flex-shrink: 0;
   border-bottom: 1px solid var(--dash-border);
 }
-.dash-chips-row {
-  display: flex;
-  align-items: center;
-  gap: .3rem;
-}
 .dash-chips-strip {
-  flex: 1;
   display: flex;
   gap: .35rem;
-  overflow: hidden;
-  min-width: 0;
 }
 
 .dash-chip {
@@ -417,74 +409,6 @@ body { min-height: 100dvh; }
   user-select: none;
 }
 
-/* ▼ more button */
-.dash-chips-more {
-  position: relative;
-  flex-shrink: 0;
-}
-.dash-chips-more-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  border: 1px solid var(--dash-border);
-  background: transparent;
-  color: var(--dash-muted);
-  cursor: pointer;
-  transition: background .12s, color .12s, transform .2s;
-}
-.dash-chips-more-btn:hover {
-  background: var(--dash-hover);
-  color: var(--dash-text);
-}
-.dash-chips-more-btn--open {
-  background: var(--dash-hover);
-  color: var(--dash-text);
-}
-.dash-chips-more-btn--open svg {
-  transform: rotate(180deg);
-}
-.dash-chips-more-btn--has-active {
-  border-color: var(--dash-accent, #99001a);
-  color: var(--dash-accent, #99001a);
-}
-
-/* dropdown */
-.dash-chips-dropdown {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  background: #18181f;
-  border: 1px solid rgba(255,255,255,.1);
-  border-radius: 12px;
-  padding: .35rem;
-  min-width: 150px;
-  box-shadow: 0 8px 24px rgba(0,0,0,.5);
-  z-index: 300;
-  display: flex;
-  flex-direction: column;
-  gap: .2rem;
-  animation: attach-menu-in .12s ease;
-}
-.dash-chips-dropdown .dash-chip {
-  display: block;
-  width: 100%;
-  text-align: left;
-  border-radius: 8px;
-  border-color: transparent;
-  background: transparent;
-}
-.dash-chips-dropdown .dash-chip:hover {
-  background: rgba(255,255,255,.07);
-  border-color: transparent;
-}
-.dash-chips-dropdown .dash-chip--active {
-  background: rgba(153,0,26,.2);
-  border-color: transparent;
-  color: #ff4d6d;
-}
 
 .dash-conv-list {
   list-style: none;

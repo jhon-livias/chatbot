@@ -47,6 +47,8 @@ export class FunnelMessageMongoRepository {
     funnelUserId: string;
     text: string;
     agentId: string;
+    contentType?: string;
+    mediaUrl?: string;
   }): Promise<void> {
     await FunnelMessageModel.create({
       id: randomUUID(),
@@ -58,6 +60,8 @@ export class FunnelMessageMongoRepository {
       timestamp: new Date(),
       isAnswered: true,
       agentId: params.agentId,
+      ...(params.contentType !== undefined && { contentType: params.contentType }),
+      ...(params.mediaUrl !== undefined && { mediaUrl: params.mediaUrl }),
     });
   }
 

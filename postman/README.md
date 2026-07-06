@@ -130,6 +130,41 @@ POST /webhook  →  webhook_secret (= App Secret)
 
 **Comportamiento esperado (modo human):** webhook `200`, media guardada, mensaje en inbox del agente asignado, sin auto-reply del bot.
 
+## Outbound agent media (M3) — POST multipart
+
+Requiere JWT de agente (`Authorization: Bearer {{agent_token}}`) y conversación en **modo human** con ventana 24h abierta.
+
+### Enviar imagen al lead
+
+```bash
+curl -X POST "http://localhost:3000/api/v1/conversations/CONVERSATION_ID/messages" \
+  -H "Authorization: Bearer AGENT_JWT" \
+  -F "content=Adjunto tu brochure" \
+  -F "file=@/ruta/a/foto.jpg;type=image/jpeg"
+```
+
+### Enviar PDF al lead
+
+```bash
+curl -X POST "http://localhost:3000/api/v1/conversations/CONVERSATION_ID/messages" \
+  -H "Authorization: Bearer AGENT_JWT" \
+  -F "content=Constancia adjunta" \
+  -F "file=@/ruta/a/constancia.pdf;type=application/pdf"
+```
+
+### Solo texto (JSON, backward compatible)
+
+```bash
+curl -X POST "http://localhost:3000/api/v1/conversations/CONVERSATION_ID/messages" \
+  -H "Authorization: Bearer AGENT_JWT" \
+  -H "Content-Type: application/json" \
+  -d '{"content":"Hola, ¿en qué puedo ayudarte?"}'
+```
+
+**MIME permitidos:** `image/jpeg`, `image/png`, `image/webp`, `application/pdf` — máximo 10 MB.
+
+**Respuesta 201:** `{ "messageId": "wamid...", "status": "sent", "contentType": "image", "mediaUrl": "/media/..." }`
+
 ## Sincronizar tras cambiar `.env` en el VPS
 
 ```bash

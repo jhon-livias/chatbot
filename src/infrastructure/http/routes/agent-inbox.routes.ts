@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from 'express';
+import multer from 'multer';
 import { authenticateAgentJwt } from '../middlewares/authenticate-agent-jwt.middleware.js';
 import { ListAgentInboxUseCase } from '../../../application/use-cases/agent-inbox/list-agent-inbox.usecase.js';
 import { GetConversationHistoryUseCase } from '../../../application/use-cases/agent-inbox/get-conversation-history.usecase.js';
@@ -14,8 +15,15 @@ import type { FunnelMessageMongoRepository } from '../../database/mongodb/reposi
 import type { UserMongoRepository } from '../../database/mongodb/repositories/user.mongo-repository.js';
 import type { FunnelUserMongoRepository } from '../../database/mongodb/repositories/funnel-user.mongo-repository.js';
 import type { RealtimeNotifier } from '../../../application/services/realtime-notifier.service.js';
+import type { MetaMediaService } from '../../webhooks/meta/meta-media.service.js';
+import type { MediaStoragePort } from '../../../application/ports/media-storage.port.js';
 import { logAgentAuditFromRequest, type AgentAuditFields } from '../../shared/agent-audit.logger.js';
 import { resolveContactName } from '../../shared/resolve-contact-name.js';
+import {
+  agentMediaUpload,
+  mimeToAgentContentType,
+  validateAgentMediaMime,
+} from '../middlewares/agent-media-upload.middleware.js';
 import type { UserRepository } from '../../../domain/repositories/user.repository.js';
 import type { AgentRepository } from '../../../domain/repositories/agent.repository.js';
 
@@ -50,13 +58,22 @@ export function createAgentInboxRouter(
   agentRepo: AgentRepository,
   messagingProvider: MessagingProviderPort,
   funnelMessageRepo: FunnelMessageMongoRepository,
+  metaMediaService: MetaMediaService,
+  mediaStorage: MediaStoragePort,
   realtimeNotifier?: RealtimeNotifier,
 ): Router {
   const router = Router();
 
   const listInbox = new ListAgentInboxUseCase(conversationRepo, userRepo, funnelUserRepo, agentRepo);
   const getHistory = new GetConversationHistoryUseCase(conversationRepo, userRepo, funnelUserRepo, agentRepo);
-  const sendMessage = new SendAgentMessageUseCase(conversationRepo, messagingProvider, funnelMessageRepo, realtimeNotifier);
+  const sendMessage = new SendAgentMessageUseCase(
+    conversationRepo,
+    messagingProvider,
+    funnelMessageRepo,
+    metaMediaService,
+    mediaStorage,
+    realtimeNotifier,
+  );
   const markRead = new MarkConversationReadUseCase(conversationRepo, realtimeNotifier);
   const returnToBot = new ReturnConversationToBotUseCase(conversationRepo);
   const takeConversation = new TakeConversationUseCase(conversationRepo, funnelUserRepo);
@@ -151,21 +168,41 @@ export function createAgentInboxRouter(
     }
   });
 
-  // POST /api/v1/conversations/:id/messages
-  router.post('/api/v1/conversations/:id/messages', async (req: Request, res: Response) => {
+  // POST /api/v1/conversations/:id/messages — JSON (text) or multipart/form-data (file + optional content caption)
+  router.post(
+    '/api/v1/conversations/:id/messages',
+    agentMediaUpload.single('file'),
+    async (req: Request, res: Response) => {
     const agentId = req.agent!.id;
     const conversationId = String(req.params['id']);
-    const { content } = req.body as { content?: string };
+    const file = req.file;
+    const bodyContent = typeof req.body?.content === 'string' ? req.body.content : undefined;
 
-    if (!content?.trim()) {
-      res.status(400).json({ error: 'content es requerido' });
+    if (!file && !bodyContent?.trim()) {
+      res.status(400).json({ error: 'content o file es requerido' });
       return;
     }
 
     try {
-      const result = await sendMessage.execute({ conversationId, agentId, content });
+      if (file) {
+        validateAgentMediaMime(file.mimetype);
+      }
+
+      const result = await sendMessage.execute({
+        conversationId,
+        agentId,
+        ...(bodyContent !== undefined && { content: bodyContent }),
+        ...(file && {
+          fileBuffer: file.buffer,
+          mimeType: file.mimetype,
+          contentType: mimeToAgentContentType(file.mimetype),
+          ...(file.originalname && { fileName: file.originalname }),
+        }),
+      });
+
+      const preview = bodyContent?.trim() || file?.originalname || result.contentType;
       await auditConversationAction(conversationRepo, userRepo, funnelUserRepo, req, conversationId, 'message_sent', {
-        contentPreview: content.trim().slice(0, 120),
+        contentPreview: preview.slice(0, 120),
       });
       res.status(201).json(result);
     } catch (err) {
@@ -180,9 +217,18 @@ export function createAgentInboxRouter(
         res.status(404).json({ error: err.message });
         return;
       }
+      if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+        res.status(413).json({ error: 'Archivo demasiado grande (máximo 10 MB)' });
+        return;
+      }
+      if (err instanceof Error && err.message.includes('Tipo de archivo no permitido')) {
+        res.status(400).json({ error: err.message });
+        return;
+      }
       throw err;
     }
-  });
+  },
+  );
 
   // POST /api/v1/conversations/:id/read
   router.post('/api/v1/conversations/:id/read', async (req: Request, res: Response) => {

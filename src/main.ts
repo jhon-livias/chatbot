@@ -136,6 +136,8 @@ async function bootstrap(): Promise<void> {
     agentRepo,
     metaAdapter,
     funnelMessageRepo,
+    metaMediaService,
+    localMediaStorage,
     realtimeNotifier,
   );
 

@@ -24,6 +24,11 @@ export interface MessageDto {
   id: string;
   role: string;
   content: string;
+  contentType?: string;
+  mediaUrl?: string;
+  mimeType?: string;
+  fileName?: string;
+  caption?: string;
   status: string;
   timestamp: Date;
   externalId?: string;
@@ -95,6 +100,11 @@ export class GetConversationHistoryUseCase {
         id: m.id.value,
         role: m.role,
         content: m.content,
+        contentType: m.contentType,
+        ...(m.mediaUrl !== undefined && { mediaUrl: m.mediaUrl }),
+        ...(m.mimeType !== undefined && { mimeType: m.mimeType }),
+        ...(m.fileName !== undefined && { fileName: m.fileName }),
+        ...(m.caption !== undefined && { caption: m.caption }),
         status: m.status,
         timestamp: m.timestamp,
         ...(m.externalId !== undefined && { externalId: m.externalId }),

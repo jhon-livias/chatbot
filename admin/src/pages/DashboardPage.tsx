@@ -59,12 +59,13 @@ function formatTime(iso: string | null): string {
 
 // ─── Agent inbox chip filters ─────────────────────────────────────────────────
 type AgentChip = 'all' | 'mine' | 'unread' | 'unanswered' | 'bot'
+// First 3 are shown inline; the rest appear only in the ▼ dropdown
 const AGENT_CHIPS: { id: AgentChip; label: string }[] = [
   { id: 'all',        label: 'Todos' },
   { id: 'mine',       label: 'Mis chats' },
+  { id: 'bot',        label: 'Bot' },
   { id: 'unread',     label: 'No leídos' },
   { id: 'unanswered', label: 'Sin responder' },
-  { id: 'bot',        label: 'Bot' },
 ]
 function chipToFilters(chip: AgentChip): { agentFilter: AgentInboxFilter; listFilter: InboxListFilter } {
   if (chip === 'bot')        return { agentFilter: 'bot',  listFilter: 'all' }

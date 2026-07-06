@@ -901,6 +901,8 @@ export default function DashboardPage() {
   const searchQuery = useDebounced(searchInput, 300)
   const [includeArchived, setIncludeArchived] = useState(false)
   const [adminFilter, setAdminFilter] = useState<AdminInboxFilter>('all')
+  const [showChipsMenu, setShowChipsMenu] = useState(false)
+  const chipsMenuRef = useRef<HTMLDivElement>(null)
 
   const { conversations, total, loading, error, reload: reloadInbox } = useInbox({
     isAdmin,
@@ -930,9 +932,22 @@ export default function DashboardPage() {
 
   useMessageNotifications({ activeConversationId: id, readOnly: isAdmin, agentId: agent?.id })
 
+  // Close chips dropdown on outside click
+  useEffect(() => {
+    if (!showChipsMenu) return
+    function onDocClick(e: MouseEvent) {
+      if (chipsMenuRef.current && !chipsMenuRef.current.contains(e.target as Node)) {
+        setShowChipsMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', onDocClick)
+    return () => document.removeEventListener('mousedown', onDocClick)
+  }, [showChipsMenu])
+
   function handleTakeSuccess() { setActiveChip('all'); reloadInbox() }
   function handleChipChange(chip: AgentChip) {
     setActiveChip(chip)
+    setShowChipsMenu(false)
     if (id) navigate('/')
   }
   function openChat(conv: ConversationSummary) { navigate(`/chat/${conv.id}`) }
@@ -997,37 +1012,67 @@ export default function DashboardPage() {
         </div>
 
         <div className="dash-chips-wrap">
-          <div className="dash-chips-strip">
-            {isAdmin ? (
-              <>
-                {(['all', 'bot', 'assigned'] as AdminInboxFilter[]).map((f) => (
+          <div className="dash-chips-row">
+            <div className="dash-chips-strip">
+              {isAdmin ? (
+                (['all', 'bot', 'assigned'] as AdminInboxFilter[]).map((f) => (
                   <button key={f} type="button"
                     className={`dash-chip${adminFilter === f ? ' dash-chip--active' : ''}`}
                     onClick={() => setAdminFilter(f)}
                   >
                     {f === 'all' ? 'Todos' : f === 'bot' ? 'Bot' : 'Asignados'}
                   </button>
-                ))}
-                <label className="dash-chip dash-chip--toggle">
-                  <input
-                    type="checkbox"
-                    style={{ display: 'none' }}
-                    checked={includeArchived}
-                    onChange={(e) => setIncludeArchived(e.target.checked)}
-                  />
-                  {includeArchived ? '☑ Archivados' : 'Archivados'}
-                </label>
-              </>
-            ) : (
-              AGENT_CHIPS.map((chip) => (
-                <button key={chip.id} type="button"
-                  className={`dash-chip${activeChip === chip.id ? ' dash-chip--active' : ''}`}
-                  onClick={() => handleChipChange(chip.id)}
-                >
-                  {chip.label}
-                </button>
-              ))
-            )}
+                ))
+              ) : (
+                /* Show first 3 chips inline; rest accessible via ▼ */
+                AGENT_CHIPS.slice(0, 3).map((chip) => (
+                  <button key={chip.id} type="button"
+                    className={`dash-chip${activeChip === chip.id ? ' dash-chip--active' : ''}`}
+                    onClick={() => handleChipChange(chip.id)}
+                  >
+                    {chip.label}
+                  </button>
+                ))
+              )}
+            </div>
+
+            {/* ▼ more dropdown */}
+            <div className="dash-chips-more" ref={chipsMenuRef}>
+              <button
+                type="button"
+                className={`dash-chips-more-btn${showChipsMenu ? ' dash-chips-more-btn--open' : ''}${!isAdmin && AGENT_CHIPS.slice(3).some(c => c.id === activeChip) ? ' dash-chips-more-btn--has-active' : ''}`}
+                onClick={() => setShowChipsMenu((v) => !v)}
+                title="Más filtros"
+              >
+                <svg viewBox="0 0 20 20" fill="currentColor" width="12" height="12">
+                  <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd"/>
+                </svg>
+              </button>
+
+              {showChipsMenu && (
+                <div className="dash-chips-dropdown">
+                  {isAdmin ? (
+                    <label className={`dash-chip dash-chip--toggle${includeArchived ? ' dash-chip--active' : ''}`}
+                      style={{ display: 'flex', width: '100%', cursor: 'pointer' }}>
+                      <input type="checkbox" style={{ display: 'none' }}
+                        checked={includeArchived}
+                        onChange={(e) => { setIncludeArchived(e.target.checked); setShowChipsMenu(false) }}
+                      />
+                      {includeArchived ? '☑ Archivados' : '☐ Archivados'}
+                    </label>
+                  ) : (
+                    AGENT_CHIPS.map((chip) => (
+                      <button key={chip.id} type="button"
+                        className={`dash-chip${activeChip === chip.id ? ' dash-chip--active' : ''}`}
+                        onClick={() => handleChipChange(chip.id)}
+                      >
+                        {chip.label}
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
 

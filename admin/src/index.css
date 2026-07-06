@@ -740,3 +740,164 @@ body { min-height: 100dvh; }
   .chat-input-bar { flex-direction: column; }
   .bubble { max-width: 88%; }
 }
+
+/* ── M5: Search bar ──────────────────────────────────────── */
+.dash-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin: .5rem 1rem .25rem;
+}
+.dash-search-icon {
+  position: absolute;
+  left: .65rem;
+  color: var(--dash-muted);
+  pointer-events: none;
+  flex-shrink: 0;
+}
+.dash-search-input {
+  width: 100%;
+  padding: .45rem .45rem .45rem 2.1rem;
+  background: rgba(255,255,255,.06);
+  border: 1px solid var(--dash-border);
+  border-radius: 8px;
+  font-size: .8rem;
+  color: var(--dash-text);
+  outline: none;
+  transition: border-color .15s;
+}
+.dash-search-input::placeholder { color: var(--dash-muted); }
+.dash-search-input:focus { border-color: rgba(153,0,26,.5); }
+.dash-search-clear {
+  position: absolute;
+  right: .4rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--dash-muted);
+  font-size: .78rem;
+  line-height: 1;
+  padding: .2rem .3rem;
+  border-radius: 4px;
+}
+.dash-search-clear:hover { color: var(--dash-text); }
+
+/* ── M5: Secondary filter row ────────────────────────────── */
+.dash-filters--secondary {
+  border-top: none;
+  padding-top: 0;
+}
+
+/* ── M5: 24h window banner ───────────────────────────────── */
+.dash-window-banner {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .55rem 1.25rem;
+  background: rgba(234,179,8,.13);
+  color: #fbbf24;
+  font-size: .78rem;
+  font-weight: 500;
+  border-top: 1px solid rgba(234,179,8,.25);
+  flex-shrink: 0;
+}
+
+/* ── M5: Attach button ───────────────────────────────────── */
+.dash-attach-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: transparent;
+  border: 1px solid var(--dash-border);
+  color: var(--dash-muted);
+  cursor: pointer;
+  transition: background .15s, color .15s;
+  flex-shrink: 0;
+}
+.dash-attach-btn:hover:not(:disabled) {
+  background: var(--dash-hover);
+  color: var(--dash-text);
+}
+.dash-attach-btn:disabled { opacity: .35; cursor: not-allowed; }
+
+/* ── M5: Pending file preview ────────────────────────────── */
+.dash-file-preview {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .4rem .75rem;
+  background: rgba(255,255,255,.06);
+  border: 1px solid var(--dash-border);
+  border-radius: 8px;
+  font-size: .78rem;
+  color: var(--dash-text);
+}
+.dash-file-preview-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dash-file-preview-remove {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--dash-muted);
+  font-size: .78rem;
+  padding: .1rem .3rem;
+  border-radius: 4px;
+  line-height: 1;
+}
+.dash-file-preview-remove:hover { color: #f87171; }
+
+/* ── M5: Drag overlay ────────────────────────────────────── */
+.dash-chat--dragging .dash-messages {
+  outline: 2px dashed var(--dash-accent);
+  outline-offset: -6px;
+  background: rgba(124,58,237,.07);
+}
+
+/* ── M5: Media in bubbles ────────────────────────────────── */
+.dash-bubble-media-link {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+}
+.dash-bubble-img {
+  display: block;
+  max-width: 260px;
+  max-height: 220px;
+  border-radius: 8px;
+  object-fit: cover;
+  cursor: pointer;
+}
+.dash-bubble-caption {
+  display: block;
+  font-size: .78rem;
+  margin-top: .35rem;
+  opacity: .85;
+  word-break: break-word;
+}
+.dash-bubble-doc {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .45rem .6rem;
+  background: rgba(255,255,255,.08);
+  border-radius: 8px;
+  text-decoration: none;
+  color: inherit;
+  font-size: .82rem;
+  font-weight: 500;
+  transition: background .15s;
+}
+.dash-bubble-doc:hover { background: rgba(255,255,255,.13); }
+.dash-bubble-doc-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 200px;
+}

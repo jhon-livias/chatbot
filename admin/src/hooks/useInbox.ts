@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { api } from '../api/client'
 import { useRealtime } from '../context/RealtimeContext'
 
@@ -15,6 +15,8 @@ export interface ConversationSummary {
   handoffAt: string | null
   lastUserMessageAt: string | null
   lastAgentMessageAt: string | null
+  csWindowOpen: boolean
+  csWindowExpiresAt: string | null
   updatedAt: string
   createdAt: string
   lastMessagePreview?: string
@@ -28,17 +30,26 @@ interface InboxResponse {
 }
 
 export type AgentInboxFilter = 'own' | 'bot'
+export type InboxListFilter = 'all' | 'unread' | 'unanswered'
 
 interface UseInboxOptions {
   isAdmin?: boolean
   agentFilter?: AgentInboxFilter
+  listFilter?: InboxListFilter
+  searchQuery?: string
   activeConversationId?: string | undefined
 }
 
 const FALLBACK_POLL_MS = 60_000
 
 export function useInbox(options: UseInboxOptions = {}) {
-  const { isAdmin = false, agentFilter = 'own', activeConversationId } = options
+  const {
+    isAdmin = false,
+    agentFilter = 'own',
+    listFilter = 'all',
+    searchQuery = '',
+    activeConversationId,
+  } = options
   const { connectionState, subscribe } = useRealtime()
   const wsConnected = connectionState === 'connected'
 
@@ -52,12 +63,22 @@ export function useInbox(options: UseInboxOptions = {}) {
       if (initial) setLoading(true)
       try {
         const params = new URLSearchParams()
+
         if (isAdmin) {
           params.set('limit', '100')
         } else if (agentFilter === 'bot') {
           params.set('filter', 'bot')
           params.set('limit', '100')
         }
+
+        if (listFilter !== 'all') {
+          params.set('filter', listFilter)
+        }
+
+        if (searchQuery.trim()) {
+          params.set('q', searchQuery.trim())
+        }
+
         const qs = params.toString()
         const data = await api.get<InboxResponse>(`/api/v1/inbox${qs ? `?${qs}` : ''}`)
         setConversations(data.conversations)
@@ -69,7 +90,7 @@ export function useInbox(options: UseInboxOptions = {}) {
         if (initial) setLoading(false)
       }
     },
-    [isAdmin, agentFilter],
+    [isAdmin, agentFilter, listFilter, searchQuery],
   )
 
   useEffect(() => {
@@ -114,7 +135,13 @@ export function useInbox(options: UseInboxOptions = {}) {
             ...conv,
             updatedAt: event.message.timestamp,
             lastMessagePreview: preview,
-            ...(isUserMsg && { lastUserMessageAt: event.message.timestamp }),
+            ...(isUserMsg && {
+              lastUserMessageAt: event.message.timestamp,
+              csWindowOpen: true,
+              csWindowExpiresAt: new Date(
+                new Date(event.message.timestamp).getTime() + 24 * 60 * 60 * 1000,
+              ).toISOString(),
+            }),
             ...(!isUserMsg && { lastAgentMessageAt: event.message.timestamp }),
             unreadCountAgent:
               isUserMsg && !isActive
@@ -130,4 +157,20 @@ export function useInbox(options: UseInboxOptions = {}) {
   }, [subscribe, activeConversationId, fetch])
 
   return { conversations, total, loading, error, reload: () => void fetch(false) }
+}
+
+/** Debounce a value by the given delay in ms. */
+export function useDebounced<T>(value: T, delayMs: number): T {
+  const [debounced, setDebounced] = useState(value)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    if (timerRef.current) clearTimeout(timerRef.current)
+    timerRef.current = setTimeout(() => setDebounced(value), delayMs)
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current)
+    }
+  }, [value, delayMs])
+
+  return debounced
 }

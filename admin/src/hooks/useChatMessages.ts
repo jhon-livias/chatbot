@@ -7,6 +7,11 @@ export interface ChatMessage {
   id: string
   role: 'user' | 'assistant' | 'agent' | 'system'
   content: string
+  contentType?: string
+  mediaUrl?: string
+  mimeType?: string
+  fileName?: string
+  caption?: string
   status: string
   timestamp: string
   externalId?: string
@@ -25,6 +30,8 @@ interface ConversationMeta {
   assignedAgentId: string | null
   assignedAgentName: string | null
   unreadCountAgent: number
+  csWindowOpen: boolean
+  csWindowExpiresAt: string | null
 }
 
 interface HistoryResponse extends ConversationMeta {
@@ -103,6 +110,10 @@ export function useChatMessages(conversationId: string) {
         }
 
         if (!delta || !since) {
+          const histData = data as typeof data & {
+            csWindowOpen?: boolean
+            csWindowExpiresAt?: string | null
+          }
           setMeta({
             conversationId: data.conversationId,
             phoneNumber: data.phoneNumber,
@@ -113,6 +124,8 @@ export function useChatMessages(conversationId: string) {
             assignedAgentId: data.assignedAgentId,
             assignedAgentName: data.assignedAgentName ?? null,
             unreadCountAgent: data.unreadCountAgent,
+            csWindowOpen: histData.csWindowOpen ?? true,
+            csWindowExpiresAt: histData.csWindowExpiresAt ?? null,
           })
         }
 

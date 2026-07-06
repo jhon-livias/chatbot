@@ -53,12 +53,41 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return res.json() as Promise<T>
 }
 
+async function requestFormData<T>(path: string, formData: FormData): Promise<T> {
+  const token = getToken()
+  const headers: Record<string, string> = {}
+  if (token) headers['Authorization'] = `Bearer ${token}`
+
+  const res = await fetch(`${BASE}${path}`, {
+    method: 'POST',
+    headers,
+    body: formData,
+  })
+
+  if (res.status === 401) {
+    logout()
+    throw new Error('Sesión expirada. Inicia sesión de nuevo.')
+  }
+
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({ error: res.statusText }))) as { error?: string }
+    const err = new Error(body.error ?? res.statusText) as Error & { status: number }
+    err.status = res.status
+    throw err
+  }
+
+  return res.json() as Promise<T>
+}
+
 export const api = {
   post<T>(path: string, body: unknown): Promise<T> {
     return request<T>(path, { method: 'POST', body: JSON.stringify(body) })
   },
   get<T>(path: string): Promise<T> {
     return request<T>(path, { method: 'GET' })
+  },
+  postFormData<T>(path: string, formData: FormData): Promise<T> {
+    return requestFormData<T>(path, formData)
   },
 }
 

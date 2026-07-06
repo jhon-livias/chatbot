@@ -273,6 +273,14 @@ export function createAgentInboxRouter(
         res.status(404).json({ error: err.message });
         return;
       }
+      if (err instanceof Error && err.message === 'La conversación no está en modo humano') {
+        res.status(409).json({ error: 'La conversación está en modo bot. Toma el chat primero.' });
+        return;
+      }
+      if (err instanceof Error && err.message.includes('Ventana de 24 horas')) {
+        res.status(409).json({ error: err.message });
+        return;
+      }
       if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
         res.status(413).json({ error: 'Archivo demasiado grande (máximo 16 MB para audio/video, 5 MB para imágenes)' });
         return;

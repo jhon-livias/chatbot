@@ -82,6 +82,26 @@ function matchesAdminFilter(conv: ConversationSummary, filter: AdminInboxFilter)
   return true
 }
 
+function matchesSearch(conv: ConversationSummary, q: string): boolean {
+  const needle = q.trim().toLowerCase()
+  if (!needle) return true
+  const name = (conv.contactName ?? '').toLowerCase()
+  const phone = conv.phoneNumber.toLowerCase()
+  const qDigits = q.replace(/\D/g, '')
+  const phoneDigits = conv.phoneNumber.replace(/\D/g, '')
+  return (
+    name.includes(needle) ||
+    phone.includes(needle) ||
+    (qDigits.length > 0 && phoneDigits.includes(qDigits))
+  )
+}
+
+function matchesLabelFilter(conv: ConversationSummary, label: string): boolean {
+  const needle = label.trim().toLowerCase()
+  if (!needle) return true
+  return (conv.labels ?? []).some((l) => l.toLowerCase().includes(needle))
+}
+
 /** Sync with ALLOWED_AGENT_MEDIA_MIMES (agent-media-upload.middleware.ts) */
 const ALLOWED_MIME = new Set([
   'image/jpeg', 'image/png', 'image/webp', 'application/pdf',
@@ -424,7 +444,12 @@ function ChatPanel({
       setMeta((prev) => prev ? { ...prev, pinned } : prev)
       onMutated?.()
     } catch (e) {
-      alert(e instanceof Error ? e.message : 'Error al fijar')
+      const err = e as Error & { status?: number }
+      if (err.status === 404) {
+        alert('Fijar chat no disponible en el servidor actual. Se requiere deploy con Paq2 (pin/labels).')
+        return
+      }
+      alert(err.message || 'Error al fijar')
     }
   }
 
@@ -503,7 +528,14 @@ function ChatPanel({
       }
     } catch (err) {
       markOptimisticFailed(optimisticId)
-      setSendError(err instanceof Error ? err.message : 'Error al enviar')
+      const e = err as Error & { status?: number }
+      if (e.status === 409) {
+        setSendError(e.message)
+      } else if (e.status === 403) {
+        setSendError('No tienes permiso para responder en este chat.')
+      } else {
+        setSendError(e.message ?? 'Error al enviar')
+      }
       setText(caption)
       if (fileToSend) setPendingFile(fileToSend)
     } finally {
@@ -809,11 +841,23 @@ export default function DashboardPage() {
   })
 
   const filteredConversations = useMemo(() => {
-    if (!isAdmin || adminFilter === 'all') return conversations
-    return conversations.filter((c) => matchesAdminFilter(c, adminFilter))
-  }, [conversations, isAdmin, adminFilter])
+    let list = conversations
+    if (isAdmin && adminFilter !== 'all') {
+      list = list.filter((c) => matchesAdminFilter(c, adminFilter))
+    }
+    if (searchQuery.trim()) {
+      list = list.filter((c) => matchesSearch(c, searchQuery))
+    }
+    if (labelFilter.trim()) {
+      list = list.filter((c) => matchesLabelFilter(c, labelFilter))
+    }
+    return list
+  }, [conversations, isAdmin, adminFilter, searchQuery, labelFilter])
 
-  const displayTotal = isAdmin && adminFilter !== 'all' ? filteredConversations.length : total
+  const hasActiveFilters = Boolean(
+    searchQuery.trim() || labelFilter.trim() || (isAdmin && adminFilter !== 'all'),
+  )
+  const displayTotal = hasActiveFilters ? filteredConversations.length : total
   const hasChatOpen = Boolean(id)
 
   useMessageNotifications({ activeConversationId: id, readOnly: isAdmin, agentId: agent?.id })
@@ -920,38 +964,46 @@ export default function DashboardPage() {
           </>
         )}
 
-        {/* C13 label filter */}
-        <div className="dash-search" style={{ marginTop: '.25rem' }}>
-          <svg viewBox="0 0 20 20" fill="currentColor" width="12" height="12" className="dash-search-icon" aria-hidden>
-            <path d="M7 3a1 1 0 000 2h6a1 1 0 100-2H7zM4 7a1 1 0 011-1h10a1 1 0 110 2H5a1 1 0 01-1-1zM2 11a2 2 0 012-2h12a2 2 0 012 2v4a2 2 0 01-2 2H4a2 2 0 01-2-2v-4z"/>
-          </svg>
-          <input
-            type="text"
-            className="dash-search-input"
-            placeholder="Filtrar por etiqueta…"
-            value={labelInput}
-            onChange={(e) => setLabelInput(e.target.value.toLowerCase())}
-          />
-          {labelInput && (
-            <button type="button" className="dash-search-clear" onClick={() => setLabelInput('')} title="Limpiar">✕</button>
-          )}
-        </div>
-
-        {/* C12 contact search */}
-        <div className="dash-search">
-          <svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14" className="dash-search-icon" aria-hidden>
-            <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
-          </svg>
-          <input
-            type="text"
-            className="dash-search-input"
-            placeholder="Buscar por nombre o teléfono…"
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-          />
-          {searchInput && (
-            <button type="button" className="dash-search-clear" onClick={() => setSearchInput('')} title="Limpiar">✕</button>
-          )}
+        {/* C12 + C13 — búsqueda y etiqueta */}
+        <div className="dash-filter-bar">
+          <div className="dash-filter-field">
+            <span className="dash-filter-label">Buscar contacto</span>
+            <div className="dash-search dash-search--compact">
+              <svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14" className="dash-search-icon" aria-hidden>
+                <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
+              </svg>
+              <input
+                type="search"
+                className="dash-search-input"
+                placeholder="Nombre o teléfono…"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                autoComplete="off"
+              />
+              {searchInput && (
+                <button type="button" className="dash-search-clear" onClick={() => setSearchInput('')} title="Limpiar">✕</button>
+              )}
+            </div>
+          </div>
+          <div className="dash-filter-field">
+            <span className="dash-filter-label">Etiqueta</span>
+            <div className="dash-search dash-search--compact">
+              <svg viewBox="0 0 20 20" fill="currentColor" width="13" height="13" className="dash-search-icon" aria-hidden>
+                <path fillRule="evenodd" d="M17.707 9.293a1 1 0 010 1.414l-7 7a1 1 0 01-1.414 0l-7-7A.997.997 0 013 10V5a3 3 0 013-3h5c.256 0 .512.098.707.293l7 7zM5 6a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd"/>
+              </svg>
+              <input
+                type="search"
+                className="dash-search-input dash-search-input--label"
+                placeholder="ej. interesado…"
+                value={labelInput}
+                onChange={(e) => setLabelInput(e.target.value.toLowerCase())}
+                autoComplete="off"
+              />
+              {labelInput && (
+                <button type="button" className="dash-search-clear" onClick={() => setLabelInput('')} title="Limpiar">✕</button>
+              )}
+            </div>
+          </div>
         </div>
 
         <ul className="dash-conv-list">
@@ -981,7 +1033,7 @@ export default function DashboardPage() {
                             ? 'Sin chats este mes'
                             : agentFilter === 'bot'
                               ? 'Sin chats del bot este mes'
-                              : 'Sin chats asignados'}
+                              : 'Sin chats asignados a ti. Prueba la pestaña Bot →'}
               </span>
             </li>
           )}

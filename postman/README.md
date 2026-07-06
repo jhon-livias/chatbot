@@ -38,6 +38,10 @@ POST /webhook  →  webhook_secret (= App Secret)
 | POST /webhook — Text message | `200` + respuesta en WhatsApp |
 | POST /webhook — Image message | `200` + auto-reply bot (modo bot) o cola agente (modo human) |
 | POST /webhook — Document message | `200` + auto-reply bot (modo bot) o cola agente (modo human) |
+| POST /webhook — Audio message (A4) | `200` + media guardada; auto-reply bot o inbox human |
+| POST /webhook — Video message (A5) | `200` + media guardada; auto-reply bot o inbox human |
+| POST /conversations/:id/messages — Send audio | `201` + lead recibe nota de voz (multipart) |
+| POST /conversations/:id/messages — Send video | `201` + lead recibe video MP4 (multipart) |
 | POST /webhook — Status update | `200` (evento ignorado) |
 
 ## Orden de prueba
@@ -48,6 +52,10 @@ POST /webhook  →  webhook_secret (= App Secret)
 4. POST /webhook — Text message (número real en `test_wa_id`)
 5. POST /webhook — Image message (payload sample abajo)
 6. POST /webhook — Document message (payload sample abajo)
+7. POST /webhook — Audio message (A4)
+8. POST /webhook — Video message (A5)
+9. POST /conversations/:id/messages — Send audio (multipart, JWT)
+10. POST /conversations/:id/messages — Send video (multipart, JWT)
 
 ## Payload samples — inbound media (M2)
 
@@ -161,9 +169,111 @@ curl -X POST "http://localhost:3000/api/v1/conversations/CONVERSATION_ID/message
   -d '{"content":"Hola, ¿en qué puedo ayudarte?"}'
 ```
 
-**MIME permitidos:** `image/jpeg`, `image/png`, `image/webp`, `application/pdf` — máximo 10 MB.
+**MIME permitidos:** `image/jpeg`, `image/png`, `image/webp`, `application/pdf`, audio (`ogg`, `mpeg`, `mp4`, `aac`, `amr`, `wav`, `webm`), video (`mp4`, `3gpp`) — máximo 16 MB (audio/video), 5 MB imágenes.
 
 **Respuesta 201:** `{ "messageId": "wamid...", "status": "sent", "contentType": "image", "mediaUrl": "/media/..." }`
+
+## Payload samples — inbound audio/video (M11)
+
+### Audio (nota de voz)
+
+```json
+{
+  "object": "whatsapp_business_account",
+  "entry": [{
+    "id": "WABA_ID",
+    "changes": [{
+      "field": "messages",
+      "value": {
+        "messaging_product": "whatsapp",
+        "metadata": {
+          "display_phone_number": "15550000000",
+          "phone_number_id": "1234567890"
+        },
+        "contacts": [{
+          "profile": { "name": "Lead Test" },
+          "wa_id": "51999999999"
+        }],
+        "messages": [{
+          "from": "51999999999",
+          "id": "wamid.INBOUND_AUDIO_ID",
+          "timestamp": "1710000002",
+          "type": "audio",
+          "audio": {
+            "mime_type": "audio/ogg; codecs=opus",
+            "sha256": "abc789",
+            "id": "META_MEDIA_ID_AUDIO",
+            "voice": true
+          }
+        }]
+      }
+    }]
+  }]
+}
+```
+
+### Video
+
+```json
+{
+  "object": "whatsapp_business_account",
+  "entry": [{
+    "id": "WABA_ID",
+    "changes": [{
+      "field": "messages",
+      "value": {
+        "messaging_product": "whatsapp",
+        "metadata": {
+          "display_phone_number": "15550000000",
+          "phone_number_id": "1234567890"
+        },
+        "contacts": [{
+          "profile": { "name": "Lead Test" },
+          "wa_id": "51999999999"
+        }],
+        "messages": [{
+          "from": "51999999999",
+          "id": "wamid.INBOUND_VIDEO_ID",
+          "timestamp": "1710000003",
+          "type": "video",
+          "video": {
+            "caption": "Video de consulta",
+            "mime_type": "video/mp4",
+            "sha256": "ghi012",
+            "id": "META_MEDIA_ID_VIDEO"
+          }
+        }]
+      }
+    }]
+  }]
+}
+```
+
+## Outbound agent audio/video (M11) — POST multipart
+
+Requiere JWT y conversación en modo human con ventana 24h abierta.
+
+### Enviar audio al lead
+
+```bash
+curl -X POST "http://localhost:3000/api/v1/conversations/CONVERSATION_ID/messages" \
+  -H "Authorization: Bearer AGENT_JWT" \
+  -F "content=Te envío un audio explicativo" \
+  -F "file=@/ruta/a/nota.ogg;type=audio/ogg"
+```
+
+### Enviar video al lead
+
+```bash
+curl -X POST "http://localhost:3000/api/v1/conversations/CONVERSATION_ID/messages" \
+  -H "Authorization: Bearer AGENT_JWT" \
+  -F "content=Video informativo" \
+  -F "file=@/ruta/a/clip.mp4;type=video/mp4"
+```
+
+## Deploy multimedia
+
+Ver `docs/WA-FEATURES-DEPLOY.md` — proxy Apache `/media`, backup volumen `uploads-data`, checklist E2E.
 
 ## Sincronizar tras cambiar `.env` en el VPS
 

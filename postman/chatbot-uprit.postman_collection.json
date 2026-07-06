@@ -404,6 +404,174 @@
       "response": []
     },
     {
+      "name": "POST /webhook — Audio message (A4)",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const secret = pm.environment.get('webhook_secret');",
+              "const rawBody = pm.variables.replaceIn(pm.request.body.raw);",
+              "const signature = CryptoJS.HmacSHA256(rawBody, secret).toString(CryptoJS.enc.Hex);",
+              "pm.request.headers.upsert({ key: 'x-hub-signature-256', value: 'sha256=' + signature });",
+              "pm.request.body.update(rawBody);"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"object\": \"whatsapp_business_account\",\n  \"entry\": [\n    {\n      \"id\": \"WHATSAPP_BUSINESS_ACCOUNT_ID\",\n      \"changes\": [\n        {\n          \"field\": \"messages\",\n          \"value\": {\n            \"messaging_product\": \"whatsapp\",\n            \"metadata\": {\n              \"display_phone_number\": \"15551234567\",\n              \"phone_number_id\": \"1234567890\"\n            },\n            \"contacts\": [\n              { \"profile\": { \"name\": \"Alumno Demo\" }, \"wa_id\": \"{{test_wa_id}}\" }\n            ],\n            \"messages\": [\n              {\n                \"from\": \"{{test_wa_id}}\",\n                \"id\": \"wamid.audio.001\",\n                \"timestamp\": \"1719900300\",\n                \"type\": \"audio\",\n                \"audio\": {\n                  \"mime_type\": \"audio/ogg; codecs=opus\",\n                  \"sha256\": \"abc789\",\n                  \"id\": \"META_MEDIA_ID_AUDIO\",\n                  \"voice\": true\n                }\n              }\n            ]\n          }\n        }\n      ]\n    }\n  ]\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": {
+          "raw": "{{base_url}}/webhook",
+          "host": ["{{base_url}}"],
+          "path": ["webhook"]
+        },
+        "description": "A4 inbound — Nota de voz del lead. Parser guarda contentType=audio, descarga media de Meta y persiste en storage local."
+      },
+      "response": []
+    },
+    {
+      "name": "POST /webhook — Video message (A5)",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const secret = pm.environment.get('webhook_secret');",
+              "const rawBody = pm.variables.replaceIn(pm.request.body.raw);",
+              "const signature = CryptoJS.HmacSHA256(rawBody, secret).toString(CryptoJS.enc.Hex);",
+              "pm.request.headers.upsert({ key: 'x-hub-signature-256', value: 'sha256=' + signature });",
+              "pm.request.body.update(rawBody);"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"object\": \"whatsapp_business_account\",\n  \"entry\": [\n    {\n      \"id\": \"WHATSAPP_BUSINESS_ACCOUNT_ID\",\n      \"changes\": [\n        {\n          \"field\": \"messages\",\n          \"value\": {\n            \"messaging_product\": \"whatsapp\",\n            \"metadata\": {\n              \"display_phone_number\": \"15551234567\",\n              \"phone_number_id\": \"1234567890\"\n            },\n            \"contacts\": [\n              { \"profile\": { \"name\": \"Alumno Demo\" }, \"wa_id\": \"{{test_wa_id}}\" }\n            ],\n            \"messages\": [\n              {\n                \"from\": \"{{test_wa_id}}\",\n                \"id\": \"wamid.video.001\",\n                \"timestamp\": \"1719900400\",\n                \"type\": \"video\",\n                \"video\": {\n                  \"caption\": \"Video de consulta\",\n                  \"mime_type\": \"video/mp4\",\n                  \"sha256\": \"ghi012\",\n                  \"id\": \"META_MEDIA_ID_VIDEO\"\n                }\n              }\n            ]\n          }\n        }\n      ]\n    }\n  ]\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": {
+          "raw": "{{base_url}}/webhook",
+          "host": ["{{base_url}}"],
+          "path": ["webhook"]
+        },
+        "description": "A5 inbound — Video del lead. Parser guarda contentType=video + caption opcional."
+      },
+      "response": []
+    },
+    {
+      "name": "POST /conversations/:id/messages — Send audio (multipart)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 201', () => pm.response.to.have.status(201));",
+              "pm.test('contentType audio', () => {",
+              "    const json = pm.response.json();",
+              "    pm.expect(json.contentType).to.eql('audio');",
+              "    pm.expect(json.messageId).to.be.a('string').and.not.empty;",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{agent_token}}" }
+        ],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            { "key": "content", "value": "Te envío un audio explicativo", "type": "text" },
+            { "key": "file", "type": "file", "src": "", "description": "Selecciona .ogg o .mp3 (audio/ogg, audio/mpeg)" }
+          ]
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/conversations/{{conversation_id}}/messages",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "conversations", "{{conversation_id}}", "messages"]
+        },
+        "description": "A4 outbound — Agente envía nota de voz al lead. multipart/form-data: content (caption opcional) + file. Requiere modo human + ventana 24h."
+      },
+      "response": []
+    },
+    {
+      "name": "POST /conversations/:id/messages — Send video (multipart)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 201', () => pm.response.to.have.status(201));",
+              "pm.test('contentType video', () => {",
+              "    const json = pm.response.json();",
+              "    pm.expect(json.contentType).to.eql('video');",
+              "    pm.expect(json.messageId).to.be.a('string').and.not.empty;",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{agent_token}}" }
+        ],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            { "key": "content", "value": "Video informativo", "type": "text" },
+            { "key": "file", "type": "file", "src": "", "description": "Selecciona .mp4 (video/mp4)" }
+          ]
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/conversations/{{conversation_id}}/messages",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "conversations", "{{conversation_id}}", "messages"]
+        },
+        "description": "A5 outbound — Agente envía video MP4 al lead. multipart/form-data. Máx 16 MB."
+      },
+      "response": []
+    },
+    {
       "name": "POST /webhook — Status update (ignored, 200)",
       "event": [
         {

@@ -914,7 +914,7 @@ body { min-height: 100dvh; }
 /* ── M11: Video bubble (A5) ──────────────────────────────── */
 .dash-bubble-video { display: flex; flex-direction: column; gap: .35rem; }
 .dash-bubble-video-player {
-  max-width: 300px; max-height: 220px;
+  max-width: 300px; max-height: 240px;
   border-radius: 8px; display: block;
   background: #000;
 }

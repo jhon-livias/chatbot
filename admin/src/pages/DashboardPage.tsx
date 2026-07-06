@@ -82,10 +82,32 @@ function matchesAdminFilter(conv: ConversationSummary, filter: AdminInboxFilter)
   return true
 }
 
-const ALLOWED_MIME = new Set(['image/jpeg', 'image/png', 'image/webp', 'application/pdf'])
+/** Sync with ALLOWED_AGENT_MEDIA_MIMES (agent-media-upload.middleware.ts) */
+const ALLOWED_MIME = new Set([
+  'image/jpeg', 'image/png', 'image/webp', 'application/pdf',
+  'audio/ogg', 'audio/mpeg', 'audio/mp4', 'audio/aac', 'audio/amr',
+  'audio/wav', 'audio/x-wav', 'audio/webm',
+  'video/mp4', 'video/3gpp',
+])
+
+const ATTACH_ACCEPT = 'image/jpeg,image/png,image/webp,application/pdf,audio/*,video/mp4,video/3gpp'
 
 function isAllowedFile(file: File): boolean {
   return ALLOWED_MIME.has(file.type)
+}
+
+function fileKindLabel(file: File): string {
+  if (file.type.startsWith('image/')) return 'imagen'
+  if (file.type.startsWith('audio/')) return 'audio'
+  if (file.type.startsWith('video/')) return 'video'
+  return 'documento'
+}
+
+function filePreviewEmoji(file: File): string {
+  if (file.type.startsWith('image/')) return '🖼 '
+  if (file.type.startsWith('audio/')) return '🎵 '
+  if (file.type.startsWith('video/')) return '🎬 '
+  return '📄 '
 }
 
 // ─── Label chip colors (cycle through palette) ───────────────────────────────
@@ -431,7 +453,7 @@ function ChatPanel({
     e.preventDefault(); setIsDragging(false)
     const file = e.dataTransfer.files[0]
     if (file && isAllowedFile(file)) { setPendingFile(file); setSendError('') }
-    else if (file) setSendError('Tipo no permitido. Usa imagen (jpg/png/webp) o PDF.')
+    else if (file) setSendError('Tipo no permitido. Usa imagen, PDF, audio o video MP4.')
   }
 
   // ─── Paste ────────────────────────────────────────────────────────────────
@@ -459,7 +481,7 @@ function ChatPanel({
     setSendError('')
 
     const label = pendingFile
-      ? `[${pendingFile.type.startsWith('image/') ? 'imagen' : 'documento'}] ${caption}`
+      ? `[${fileKindLabel(pendingFile)}] ${caption}`
       : caption
     const optimisticId = addOptimisticMessage(isNoteMode ? `📝 ${caption}` : label, agent.id)
     setText('')
@@ -648,7 +670,7 @@ function ChatPanel({
           {pendingFile && (
             <div className="dash-file-preview">
               <span className="dash-file-preview-name">
-                {pendingFile.type.startsWith('image/') ? '🖼 ' : '📄 '}{pendingFile.name}
+                {filePreviewEmoji(pendingFile)}{pendingFile.name}
               </span>
               <button type="button" className="dash-file-preview-remove" onClick={() => setPendingFile(null)} title="Eliminar">✕</button>
             </div>
@@ -683,10 +705,10 @@ function ChatPanel({
 
           <form onSubmit={sendMessage}>
             <div className="dash-input-row">
-              <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp,application/pdf" style={{ display: 'none' }} onChange={handleFileChange} />
+              <input ref={fileInputRef} type="file" accept={ATTACH_ACCEPT} style={{ display: 'none' }} onChange={handleFileChange} />
 
               {!isNoteMode && (
-                <button type="button" className="dash-attach-btn" onClick={handleAttachClick} disabled={sending || windowBlocked} title="Adjuntar imagen o PDF">
+                <button type="button" className="dash-attach-btn" onClick={handleAttachClick} disabled={sending || windowBlocked} title="Adjuntar imagen, PDF, audio o video">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="20" height="20">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
                   </svg>

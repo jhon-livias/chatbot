@@ -22,6 +22,10 @@ export interface ListAgentInboxInput {
   listFilter?: InboxListFilter;
   /** C12 — search by phone or contact name (case insensitive). */
   q?: string;
+  /** C13 — filter by label slug */
+  label?: string;
+  /** C15 — include archived (admin only) */
+  includeArchived?: boolean;
 }
 
 export interface ListAgentInboxOutput {
@@ -46,6 +50,9 @@ export interface ConversationSummary {
   lastAgentMessageAt: Date | null;
   csWindowOpen: boolean;
   csWindowExpiresAt: string | null;
+  labels: string[];
+  pinned: boolean;
+  archivedAt: Date | null;
   updatedAt: Date;
   createdAt: Date;
 }
@@ -99,11 +106,13 @@ export class ListAgentInboxUseCase {
       ...(input.listFilter !== undefined && { listFilter: input.listFilter }),
       ...(input.q?.trim() && { q: input.q.trim() }),
       ...(searchPhoneNumbers?.length && { searchPhoneNumbers }),
+      ...(input.label?.trim() && { label: input.label.trim() }),
+      ...(input.includeArchived && { includeArchived: true }),
     });
   }
 
   private hasConversationFilters(input: ListAgentInboxInput): boolean {
-    return Boolean(input.listFilter || input.q?.trim());
+    return Boolean(input.listFilter || input.q?.trim() || input.label?.trim() || input.includeArchived);
   }
 
   private async listAdminInbox(
@@ -209,6 +218,9 @@ export class ListAgentInboxUseCase {
       lastAgentMessageAt: c.lastAgentMessageAt,
       csWindowOpen: csWindow.csWindowOpen,
       csWindowExpiresAt: csWindow.csWindowExpiresAt,
+      labels: c.labels,
+      pinned: c.pinned,
+      archivedAt: c.archivedAt,
       updatedAt: c.updatedAt,
       createdAt: c.createdAt,
     };

@@ -7,6 +7,7 @@ export type AgentAuditAction =
   | 'logout'
   | 'message_sent'
   | 'conversation_assigned'
+  | 'conversation_reassigned'
   | 'return_to_bot'
   | 'conversation_closed'
   | 'access_denied';
@@ -31,6 +32,7 @@ const ACTION_LABELS: Record<AgentAuditAction, string> = {
   logout: 'Cierre de sesión',
   message_sent: 'Mensaje enviado',
   conversation_assigned: 'Chat asignado a asesor',
+  conversation_reassigned: 'Chat reasignado',
   return_to_bot: 'Devuelto al bot',
   conversation_closed: 'Conversación cerrada',
   access_denied: 'Acceso denegado',

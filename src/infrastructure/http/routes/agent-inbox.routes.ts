@@ -8,6 +8,11 @@ import { MarkConversationReadUseCase } from '../../../application/use-cases/agen
 import { ReturnConversationToBotUseCase } from '../../../application/use-cases/agent-inbox/return-conversation-to-bot.usecase.js';
 import { TakeConversationUseCase } from '../../../application/use-cases/agent-inbox/take-conversation.usecase.js';
 import { CloseConversationUseCase } from '../../../application/use-cases/agent-inbox/close-conversation.usecase.js';
+import { UpdateLabelsUseCase } from '../../../application/use-cases/agent-inbox/update-labels.usecase.js';
+import { PinConversationUseCase } from '../../../application/use-cases/agent-inbox/pin-conversation.usecase.js';
+import { ArchiveConversationUseCase } from '../../../application/use-cases/agent-inbox/archive-conversation.usecase.js';
+import { AddInternalNoteUseCase } from '../../../application/use-cases/agent-inbox/add-internal-note.usecase.js';
+import { ReassignConversationUseCase } from '../../../application/use-cases/agent-inbox/reassign-conversation.usecase.js';
 import { ForbiddenError } from '../../../application/services/conversation-access.service.js';
 import type { ConversationRepository } from '../../../domain/repositories/conversation.repository.js';
 import type { MessagingProviderPort } from '../../../application/ports/messaging-provider.port.js';
@@ -33,7 +38,7 @@ async function auditConversationAction(
   funnelUserRepo: FunnelUserMongoRepository,
   req: Request,
   conversationId: string,
-  action: 'message_sent' | 'return_to_bot' | 'conversation_closed' | 'access_denied',
+  action: 'message_sent' | 'return_to_bot' | 'conversation_closed' | 'access_denied' | 'conversation_reassigned',
   extra?: { contentPreview?: string; detail?: string },
 ): Promise<void> {
   const conversation = await conversationRepo.findById(conversationId);
@@ -78,6 +83,11 @@ export function createAgentInboxRouter(
   const returnToBot = new ReturnConversationToBotUseCase(conversationRepo);
   const takeConversation = new TakeConversationUseCase(conversationRepo, funnelUserRepo);
   const closeConv = new CloseConversationUseCase(conversationRepo);
+  const updateLabels = new UpdateLabelsUseCase(conversationRepo);
+  const pinConversation = new PinConversationUseCase(conversationRepo);
+  const archiveConversation = new ArchiveConversationUseCase(conversationRepo);
+  const addNote = new AddInternalNoteUseCase(conversationRepo, realtimeNotifier);
+  const reassign = new ReassignConversationUseCase(conversationRepo, agentRepo);
 
   router.use('/api/v1', authenticateAgentJwt);
 
@@ -111,6 +121,10 @@ export function createAgentInboxRouter(
         ? new Date(sinceRaw)
         : undefined;
 
+    const label = typeof req.query['label'] === 'string' ? req.query['label'].trim() : undefined;
+    const includeArchived =
+      role === 'admin' && req.query['includeArchived'] === 'true' ? true : undefined;
+
     const result = await listInbox.execute({
       agentId,
       role,
@@ -120,6 +134,8 @@ export function createAgentInboxRouter(
       ...(inboxFilter !== undefined && { inboxFilter }),
       ...(listFilter !== undefined && { listFilter }),
       ...(q && { q }),
+      ...(label && { label }),
+      ...(includeArchived && { includeArchived }),
     });
     res.json(result);
   });
@@ -340,6 +356,127 @@ export function createAgentInboxRouter(
         });
         res.status(403).json({ error: err.message });
         return;
+      }
+      throw err;
+    }
+  });
+
+  // PATCH /api/v1/conversations/:id/labels — C13
+  router.patch('/api/v1/conversations/:id/labels', async (req: Request, res: Response) => {
+    const agentId = req.agent!.id;
+    const role = req.agent!.role;
+    const conversationId = String(req.params['id']);
+    const labels = req.body?.labels;
+
+    if (!Array.isArray(labels) || labels.some((l) => typeof l !== 'string')) {
+      res.status(400).json({ error: 'labels debe ser un arreglo de strings' });
+      return;
+    }
+
+    try {
+      const result = await updateLabels.execute({ conversationId, agentId, role, labels });
+      res.json(result);
+    } catch (err) {
+      if (err instanceof ForbiddenError) { res.status(403).json({ error: err.message }); return; }
+      if (err instanceof Error && err.message === 'Conversación no encontrada') { res.status(404).json({ error: err.message }); return; }
+      throw err;
+    }
+  });
+
+  // POST /api/v1/conversations/:id/pin — C14
+  router.post('/api/v1/conversations/:id/pin', async (req: Request, res: Response) => {
+    const agentId = req.agent!.id;
+    const role = req.agent!.role;
+    const conversationId = String(req.params['id']);
+    const pinned = Boolean(req.body?.pinned);
+
+    try {
+      const result = await pinConversation.execute({ conversationId, agentId, role, pinned });
+      res.json(result);
+    } catch (err) {
+      if (err instanceof ForbiddenError) { res.status(403).json({ error: err.message }); return; }
+      if (err instanceof Error && err.message === 'Conversación no encontrada') { res.status(404).json({ error: err.message }); return; }
+      throw err;
+    }
+  });
+
+  // POST /api/v1/conversations/:id/archive — C15
+  router.post('/api/v1/conversations/:id/archive', async (req: Request, res: Response) => {
+    const agentId = req.agent!.id;
+    const role = req.agent!.role;
+    const conversationId = String(req.params['id']);
+
+    try {
+      const result = await archiveConversation.execute({ conversationId, agentId, role, archive: true });
+      res.json(result);
+    } catch (err) {
+      if (err instanceof ForbiddenError) { res.status(403).json({ error: err.message }); return; }
+      if (err instanceof Error && err.message === 'Conversación no encontrada') { res.status(404).json({ error: err.message }); return; }
+      throw err;
+    }
+  });
+
+  // POST /api/v1/conversations/:id/unarchive — C15
+  router.post('/api/v1/conversations/:id/unarchive', async (req: Request, res: Response) => {
+    const agentId = req.agent!.id;
+    const role = req.agent!.role;
+    const conversationId = String(req.params['id']);
+
+    try {
+      const result = await archiveConversation.execute({ conversationId, agentId, role, archive: false });
+      res.json(result);
+    } catch (err) {
+      if (err instanceof ForbiddenError) { res.status(403).json({ error: err.message }); return; }
+      if (err instanceof Error && err.message === 'Conversación no encontrada') { res.status(404).json({ error: err.message }); return; }
+      throw err;
+    }
+  });
+
+  // POST /api/v1/conversations/:id/notes — D13 (internal note)
+  router.post('/api/v1/conversations/:id/notes', async (req: Request, res: Response) => {
+    const agentId = req.agent!.id;
+    const role = req.agent!.role;
+    const conversationId = String(req.params['id']);
+    const content = typeof req.body?.content === 'string' ? req.body.content : '';
+
+    if (!content.trim()) {
+      res.status(400).json({ error: 'content es requerido' });
+      return;
+    }
+
+    try {
+      const result = await addNote.execute({ conversationId, agentId, role, content });
+      res.status(201).json(result);
+    } catch (err) {
+      if (err instanceof ForbiddenError) { res.status(403).json({ error: err.message }); return; }
+      if (err instanceof Error && err.message === 'Conversación no encontrada') { res.status(404).json({ error: err.message }); return; }
+      throw err;
+    }
+  });
+
+  // POST /api/v1/conversations/:id/reassign — D14 (admin only)
+  router.post('/api/v1/conversations/:id/reassign', async (req: Request, res: Response) => {
+    const requestingAgentId = req.agent!.id;
+    const role = req.agent!.role;
+    const conversationId = String(req.params['id']);
+    const targetAgentId = typeof req.body?.agentId === 'string' ? req.body.agentId : '';
+
+    if (!targetAgentId.trim()) {
+      res.status(400).json({ error: 'agentId es requerido' });
+      return;
+    }
+
+    try {
+      const result = await reassign.execute({ conversationId, requestingAgentId, role, targetAgentId });
+      await auditConversationAction(
+        conversationRepo, userRepo, funnelUserRepo, req, conversationId, 'conversation_reassigned',
+        { detail: `→ agentId:${targetAgentId}` },
+      );
+      res.json(result);
+    } catch (err) {
+      if (err instanceof ForbiddenError) { res.status(403).json({ error: err.message }); return; }
+      if (err instanceof Error && (err.message === 'Conversación no encontrada' || err.message === 'Agente destino no encontrado')) {
+        res.status(404).json({ error: err.message }); return;
       }
       throw err;
     }

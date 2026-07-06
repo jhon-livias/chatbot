@@ -22,6 +22,7 @@ export function createServer(
   authRouter: Router,
   agentInboxRouter: Router,
   options: ServerOptions,
+  quickRepliesRouter?: Router,
 ): AppServer {
   const app = express();
 
@@ -80,6 +81,7 @@ export function createServer(
   app.use(webhookRouter);
   app.use(authRouter);
   app.use(agentInboxRouter);
+  if (quickRepliesRouter) app.use(quickRepliesRouter);
 
   app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
     logger.error('[HTTP] Unhandled error', { error: err.message, stack: err.stack });

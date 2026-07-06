@@ -51,7 +51,7 @@ export class ConversationMongoRepository implements ConversationRepository {
     );
 
     const docs = await ConversationModel.find(query)
-      .sort({ updatedAt: -1 })
+      .sort({ pinned: -1, updatedAt: -1 })
       .skip(opts.offset)
       .limit(opts.limit)
       .lean();
@@ -84,7 +84,7 @@ export class ConversationMongoRepository implements ConversationRepository {
     );
 
     const docs = await ConversationModel.find(query)
-      .sort({ updatedAt: -1 })
+      .sort({ pinned: -1, updatedAt: -1 })
       .skip(opts.offset)
       .limit(opts.limit)
       .lean();
@@ -114,7 +114,7 @@ export class ConversationMongoRepository implements ConversationRepository {
     );
 
     const docs = await ConversationModel.find(query)
-      .sort({ updatedAt: -1 })
+      .sort({ pinned: -1, updatedAt: -1 })
       .skip(opts.offset)
       .limit(opts.limit)
       .lean();
@@ -137,9 +137,14 @@ export class ConversationMongoRepository implements ConversationRepository {
     base: Record<string, unknown>,
     filters?: InboxQueryFilters,
   ): Record<string, unknown> {
-    if (!filters) return base;
+    // By default exclude archived conversations; admin can opt-in with includeArchived
+    const baseWithArchived: Record<string, unknown> = filters?.includeArchived
+      ? base
+      : { ...base, archivedAt: null };
 
-    const clauses: Record<string, unknown>[] = [base];
+    if (!filters) return baseWithArchived;
+
+    const clauses: Record<string, unknown>[] = [baseWithArchived];
 
     if (filters.unreadOnly) {
       clauses.push({ unreadCountAgent: { $gt: 0 } });
@@ -166,7 +171,11 @@ export class ConversationMongoRepository implements ConversationRepository {
       clauses.push({ $or: searchOr });
     }
 
-    return clauses.length === 1 ? base : { $and: clauses };
+    if (filters.label) {
+      clauses.push({ labels: filters.label });
+    }
+
+    return clauses.length === 1 ? baseWithArchived : { $and: clauses };
   }
 
   async findLatestByPhoneNumbers(phoneNumbers: string[]): Promise<Map<string, Conversation>> {
@@ -228,6 +237,9 @@ export class ConversationMongoRepository implements ConversationRepository {
         careerId: props.careerId,
         metaData: props.metaData,
         currentProgramName: props.currentProgramName,
+        labels: props.labels,
+        pinned: props.pinned,
+        archivedAt: props.archivedAt,
         updatedAt: props.updatedAt,
         createdAt: props.createdAt,
       },
@@ -344,6 +356,9 @@ export class ConversationMongoRepository implements ConversationRepository {
       careerId: (doc['careerId'] as string | null | undefined) ?? null,
       metaData: (doc['metaData'] as ConversationMetaData | null | undefined) ?? null,
       currentProgramName: (doc['currentProgramName'] as string | null | undefined) ?? null,
+      labels: (doc['labels'] as string[] | undefined) ?? [],
+      pinned: (doc['pinned'] as boolean | undefined) ?? false,
+      archivedAt: (doc['archivedAt'] as Date | null | undefined) ?? null,
       createdAt: doc['createdAt'] as Date,
       updatedAt: doc['updatedAt'] as Date,
     });

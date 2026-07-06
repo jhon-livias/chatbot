@@ -1,6 +1,6 @@
 import { Schema, model, type Document } from 'mongoose';
 
-export type MessageRole = 'user' | 'assistant' | 'system' | 'agent';
+export type MessageRole = 'user' | 'assistant' | 'system' | 'agent' | 'internal';
 export type MessageStatus = 'received' | 'processing' | 'sent' | 'delivered' | 'failed' | 'read';
 export type MessageContentType = 'text' | 'image' | 'document' | 'audio' | 'video' | 'location' | 'interactive';
 
@@ -28,7 +28,7 @@ const messageSchema = new Schema<MessageDocument>(
     externalId: { type: String, sparse: true },
     role: {
       type: String,
-      enum: ['user', 'assistant', 'system', 'agent'] satisfies MessageRole[],
+      enum: ['user', 'assistant', 'system', 'agent', 'internal'] satisfies MessageRole[],
       required: true,
     },
     content: { type: String, required: true },

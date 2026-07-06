@@ -124,6 +124,9 @@ export class HandleIncomingMessageUseCase {
         careerId: null,
         metaData: null,
         currentProgramName: null,
+        labels: [],
+        pinned: false,
+        archivedAt: null,
         createdAt: new Date(),
         updatedAt: new Date(),
       });

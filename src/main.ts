@@ -26,6 +26,8 @@ import { RealtimeNotifier } from './application/services/realtime-notifier.servi
 import { createWebhookRouter } from './infrastructure/http/routes/webhook.routes.js';
 import { createAuthRouter } from './infrastructure/http/routes/auth.routes.js';
 import { createAgentInboxRouter } from './infrastructure/http/routes/agent-inbox.routes.js';
+import { createQuickRepliesRouter } from './infrastructure/http/routes/quick-replies.routes.js';
+import { QuickReplyMongoRepository } from './infrastructure/database/mongodb/repositories/quick-reply.mongo-repository.js';
 import { createServer } from './infrastructure/http/server.js';
 import { WebSocketRealtimeAdapter } from './infrastructure/realtime/websocket-realtime.adapter.js';
 import { logger } from './infrastructure/shared/logger.js';
@@ -53,6 +55,7 @@ async function bootstrap(): Promise<void> {
   const facultyRepo = new FacultyMongoRepository();
   const funnelUserRepo = new FunnelUserMongoRepository();
   const funnelMessageRepo = new FunnelMessageMongoRepository();
+  const quickReplyRepo = new QuickReplyMongoRepository();
 
   // ── AI ────────────────────────────────────────────────────────────────────
   const deepSeekConfig = loadDeepSeekConfig();
@@ -140,6 +143,7 @@ async function bootstrap(): Promise<void> {
     localMediaStorage,
     realtimeNotifier,
   );
+  const quickRepliesRouter = createQuickRepliesRouter(quickReplyRepo);
 
   const corsOrigins = [
     ...(process.env['CORS_ORIGINS'] ?? '').split(',').filter(Boolean),
@@ -151,7 +155,7 @@ async function bootstrap(): Promise<void> {
     port: Number(process.env['PORT'] ?? 3000),
     corsOrigins: [...new Set(corsOrigins)],
     mediaStoragePath: process.env['MEDIA_STORAGE_PATH'] ?? '/app/uploads',
-  });
+  }, quickRepliesRouter);
 
   // start() receives httpServer now that it's ready
   realtimeAdapter.start(httpServer);

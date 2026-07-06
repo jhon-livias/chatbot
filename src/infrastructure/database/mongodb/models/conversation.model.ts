@@ -22,6 +22,9 @@ export interface ConversationDocument extends Document<string> {
   careerId: string | null;
   metaData: { filterType: string | null; filterValue: string | string[] } | null;
   currentProgramName: string | null;
+  labels: string[];
+  pinned: boolean;
+  archivedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -69,6 +72,9 @@ const conversationSchema = new Schema<ConversationDocument>(
       default: null,
     },
     currentProgramName: { type: String, default: null },
+    labels: { type: [String], default: [] },
+    pinned: { type: Boolean, default: false },
+    archivedAt: { type: Date, default: null },
   },
   {
     timestamps: true,
@@ -82,5 +88,8 @@ conversationSchema.index({ mode: 1, assignedAgentId: 1, status: 1 });
 conversationSchema.index({ unreadCountAgent: 1 });
 conversationSchema.index({ lastUserMessageAt: -1 });
 conversationSchema.index({ mode: 1, status: 1, assignedAgentId: 1, unreadCountAgent: 1 });
+conversationSchema.index({ labels: 1 });
+conversationSchema.index({ pinned: -1, updatedAt: -1 });
+conversationSchema.index({ archivedAt: 1 });
 
 export const ConversationModel = model<ConversationDocument>('Conversation', conversationSchema);

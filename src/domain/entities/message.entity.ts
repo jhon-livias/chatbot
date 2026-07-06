@@ -1,6 +1,6 @@
 import { MessageId } from '../value-objects/message-id.vo.js';
 
-export type MessageRole = 'user' | 'assistant' | 'system' | 'agent';
+export type MessageRole = 'user' | 'assistant' | 'system' | 'agent' | 'internal';
 export type MessageStatus = 'received' | 'processing' | 'sent' | 'delivered' | 'failed' | 'read';
 export type MessageContentType = 'text' | 'image' | 'document' | 'audio' | 'video' | 'location' | 'interactive';
 
@@ -77,6 +77,12 @@ export class Message {
   static create(props: MessageProps): Message {
     const contentType = props.contentType ?? 'text';
     const isTextType = contentType === 'text';
+    const isInternal = props.role === 'internal';
+    // internal notes only require non-empty content (no media)
+    if (isInternal) {
+      if (!props.content.trim()) throw new Error('Note content cannot be empty');
+      return new Message(props);
+    }
     // text messages require non-empty content; media messages may have empty content (caption is optional)
     if (isTextType && !props.content.trim()) {
       throw new Error('Message content cannot be empty');

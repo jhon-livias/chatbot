@@ -29,6 +29,9 @@ export interface ConversationProps {
   careerId: string | null;
   metaData: ConversationMetaData | null;
   currentProgramName: string | null;
+  labels: string[];
+  pinned: boolean;
+  archivedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -52,6 +55,9 @@ export class Conversation {
   readonly careerId: string | null;
   readonly metaData: ConversationMetaData | null;
   readonly currentProgramName: string | null;
+  readonly labels: string[];
+  readonly pinned: boolean;
+  readonly archivedAt: Date | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
 
@@ -74,6 +80,9 @@ export class Conversation {
     this.careerId = props.careerId;
     this.metaData = props.metaData;
     this.currentProgramName = props.currentProgramName;
+    this.labels = props.labels;
+    this.pinned = props.pinned;
+    this.archivedAt = props.archivedAt;
     this.createdAt = props.createdAt;
     this.updatedAt = props.updatedAt;
   }
@@ -191,6 +200,33 @@ export class Conversation {
     });
   }
 
+  /** Max 5 lowercase slug labels. */
+  static readonly MAX_LABELS = 5;
+
+  withLabels(labels: string[]): Conversation {
+    const normalized = labels
+      .map((l) => l.toLowerCase().trim())
+      .filter(Boolean)
+      .slice(0, Conversation.MAX_LABELS);
+    return Conversation.create({ ...this.toProps(), labels: normalized, updatedAt: new Date() });
+  }
+
+  withPinned(pinned: boolean): Conversation {
+    return Conversation.create({ ...this.toProps(), pinned, updatedAt: new Date() });
+  }
+
+  archive(): Conversation {
+    return Conversation.create({ ...this.toProps(), archivedAt: new Date(), updatedAt: new Date() });
+  }
+
+  unarchive(): Conversation {
+    return Conversation.create({ ...this.toProps(), archivedAt: null, updatedAt: new Date() });
+  }
+
+  isArchived(): boolean {
+    return this.archivedAt !== null;
+  }
+
   isHumanMode(): boolean {
     return this.mode === 'human';
   }
@@ -223,6 +259,9 @@ export class Conversation {
       careerId: this.careerId,
       metaData: this.metaData,
       currentProgramName: this.currentProgramName,
+      labels: this.labels,
+      pinned: this.pinned,
+      archivedAt: this.archivedAt,
       createdAt: this.createdAt,
       updatedAt: this.updatedAt,
     };

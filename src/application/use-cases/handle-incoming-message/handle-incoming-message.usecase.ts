@@ -1180,9 +1180,13 @@ export class HandleIncomingMessageUseCase {
     conversation: Conversation,
     _userContent: string,
   ): Promise<{ content: string; model: string; totalTokens: number }> {
-    // Always rebuild system prompt with fresh data from DB so every message
-    // has the latest program/admission context injected — never use a stale stored copy.
-    const freshSystemPrompt = await this.buildSystemPrompt();
+    // Prefer the system prompt already stored in the conversation (built fresh at creation).
+    // Only fall back to a full DB rebuild if the stored prompt is missing/empty — this avoids
+    // re-fetching 53 programs (~300 ms + ~40 KB tokens) on every single message.
+    const systemPrompt =
+      conversation.systemPrompt?.trim()
+        ? conversation.systemPrompt
+        : await this.buildSystemPrompt();
 
     const recentMessages = conversation.getLastNMessages(CONTEXT_WINDOW_SIZE);
     const chatHistory = recentMessages.map((m) => ({
@@ -1190,7 +1194,7 @@ export class HandleIncomingMessageUseCase {
       content: m.content,
     }));
     const result = await this.aiProvider.complete([
-      { role: 'system', content: freshSystemPrompt },
+      { role: 'system', content: systemPrompt },
       ...chatHistory,
     ]);
     return { content: result.content, model: result.model, totalTokens: result.totalTokens };

@@ -51,9 +51,22 @@ const KEYWORDS: Record<string, string[]> = {
   INFO_PROGRAM: ['INFORMACION_PROGRAMA', 'INFORMACION_PROGRAMAS', 'INFO_PROGRAM', 'BRINDAR_INFORMACION', 'PROGRAM_INFO'],
   ADMISION: ['PROCESO_ADMISION', 'ADMISION', 'ADMISSION', 'PROCESO_ADMISIÓN'],
   CATEGORIA: ['PROGRAMAS_POR_CATEGORIA', 'CATEGORIA', 'CATEGORY', 'BY_CATEGORY'],
-  GENERAL: ['SOLICITAR_MAS_INFORMACION', 'GENERAL', 'FIRST_CONTACT', 'MAS_INFORMACION', 'PEDIR_MAS_INFORMACION'],
-  EMBEDDING: ['GENERAR_QUERY', 'EMBEDDING', 'QUERY_EMBEDDING', 'GENERAR_QUERY_EMBEDDINGS'],
+  // ASK_MORE_INFORMATION = actual type stored in DB for general-query intentions
+  GENERAL: ['SOLICITAR_MAS_INFORMACION', 'GENERAL', 'FIRST_CONTACT', 'MAS_INFORMACION', 'PEDIR_MAS_INFORMACION', 'ASK_MORE_INFORMATION'],
+  // GENERATE_SEARCH_QUERY = actual type stored in DB for embedding intentions
+  EMBEDDING: ['GENERAR_QUERY', 'EMBEDDING', 'QUERY_EMBEDDING', 'GENERAR_QUERY_EMBEDDINGS', 'GENERATE_SEARCH_QUERY'],
   MULTIPLE: ['RESOLVER_DUDAS', 'MULTIPLE', 'VARIOS_PROGRAMAS', 'RESOLVER', 'MULTI'],
+};
+
+// Title-based hints for disambiguating intentions that share the same type string (e.g. PROVIDE_INFO).
+// Keys map to routing groups; values are RegExps tested against the intention title.
+const TITLE_GROUP_HINTS: Record<string, RegExp[]> = {
+  ADMISION:     [/admisi/i, /proceso.*admis/i],
+  CATEGORIA:    [/categor/i],
+  INFO_PROGRAM: [/informac.*program/i, /informar.*program/i, /info.*carrera/i, /brindar.*info/i],
+  GENERAL:      [/general/i, /m[aá]s informaci/i, /consulta general/i, /pedir/i],
+  EMBEDDING:    [/embedding/i, /query/i, /reescrib/i, /b[uú]squeda/i],
+  MULTIPLE:     [/m[uú]ltipl/i, /resolver.*duda/i, /varios.*program/i],
 };
 
 function matchesKeywords(type: string, group: string): boolean {
@@ -67,6 +80,36 @@ function findIntentionByRole(intentions: FunnelIntention[], role: string): Funne
 
 function findPromptForIntention(prompts: Prompt[], intentionId: string): Prompt | undefined {
   return prompts.find((p) => p.intentionId === intentionId && p.active);
+}
+
+/**
+ * Extended intention lookup that handles ambiguous types (e.g. multiple PROVIDE_INFO intentions).
+ * Priority: (1) exact UUID match, (2) keyword match on type, (3) title-hint match on the linked prompt.
+ */
+function findIntentionForGroup(
+  intentions: FunnelIntention[],
+  prompts: Prompt[],
+  role: string,
+  preferredId?: string,
+): FunnelIntention | undefined {
+  if (preferredId) {
+    const byId = intentions.find((i) => i.id === preferredId);
+    if (byId) return byId;
+  }
+  const byRole = findIntentionByRole(intentions, role);
+  if (byRole) return byRole;
+
+  const hints = TITLE_GROUP_HINTS[role] ?? [];
+  if (hints.length === 0) return undefined;
+
+  for (const p of prompts) {
+    if (!p.active) continue;
+    if (hints.some((re) => re.test(p.title))) {
+      const intention = intentions.find((i) => i.id === p.intentionId);
+      if (intention) return intention;
+    }
+  }
+  return undefined;
 }
 
 // -----------------------------------------------------------------------
@@ -233,34 +276,44 @@ export class IntentRouterService {
       (i) => i.id === parsed.intent || i.type.toUpperCase() === parsed.intent.toUpperCase(),
     );
 
-    // Determine routing group
-    const routingGroup = this.resolveRoutingGroup(matchedIntention, parsed.intent, intentions);
+    // Determine routing group — pass prompts so PROVIDE_INFO can be disambiguated by title
+    const routingGroup = this.resolveRoutingGroup(matchedIntention, parsed.intent, intentions, prompts);
 
     logger.info('[IntentRouter] Routing to group', { group: routingGroup, intention: matchedIntention?.type });
 
+    // Safe text fallback — never expose raw AI JSON to the end user
+    const textFallback = {
+      content: 'En este momento no pude procesar esa consulta. Por favor escribe "menu" para ver las opciones disponibles o intenta con otras palabras.',
+      model: intentRaw.model,
+      totalTokens: intentRaw.totalTokens,
+    };
+
     // ── Step 3: Route to the appropriate prompt ─────────────────────────
+    // matchedIntention?.id is passed so handlers can use the exact UUID from the AI
+    // response to find the right prompt, even when multiple intentions share the same type.
     let result: IntentRoutingResult;
+    const matchedId = matchedIntention?.id;
 
     switch (routingGroup) {
       case 'INFO_PROGRAM':
-        result = await this.handleInfoProgram(messages, userMessage, newCareerId, programs, prompts, intentions, intentRaw);
+        result = await this.handleInfoProgram(messages, userMessage, newCareerId, programs, prompts, intentions, textFallback, matchedId);
         break;
       case 'ADMISION':
-        result = await this.handleAdmision(messages, userMessage, newCareerId, programs, prompts, intentions, intentRaw);
+        result = await this.handleAdmision(messages, userMessage, newCareerId, programs, prompts, intentions, textFallback, matchedId);
         break;
       case 'CATEGORIA':
-        result = await this.handleCategoria(messages, userMessage, newMetaData, programs, prompts, intentions, intentRaw);
+        result = await this.handleCategoria(messages, userMessage, newMetaData, programs, prompts, intentions, textFallback, matchedId);
         break;
       case 'GENERAL':
-        result = await this.handleGeneral(messages, userMessage, faculties, programs, prompts, intentions, intentRaw, isFirstMessage);
+        result = await this.handleGeneral(messages, userMessage, faculties, programs, prompts, intentions, textFallback, isFirstMessage, matchedId);
         break;
       case 'EMBEDDING':
       case 'MULTIPLE':
-        result = await this.handleEmbeddingSearch(messages, userMessage, programName, programs, prompts, intentions, intentRaw);
+        result = await this.handleEmbeddingSearch(messages, userMessage, programName, programs, prompts, intentions, textFallback);
         break;
       default:
         logger.warn('[IntentRouter] Unknown routing group, falling back to GENERAL', { group: routingGroup });
-        result = await this.handleGeneral(messages, userMessage, faculties, programs, prompts, intentions, intentRaw, isFirstMessage);
+        result = await this.handleGeneral(messages, userMessage, faculties, programs, prompts, intentions, textFallback, isFirstMessage);
     }
 
     return {
@@ -334,8 +387,9 @@ export class IntentRouterService {
     prompts: Prompt[],
     intentions: FunnelIntention[],
     fallback: { content: string; model: string; totalTokens: number },
+    matchedIntentionId?: string,
   ): Promise<IntentRoutingResult> {
-    const intention = findIntentionByRole(intentions, 'INFO_PROGRAM');
+    const intention = findIntentionForGroup(intentions, prompts, 'INFO_PROGRAM', matchedIntentionId);
     const prompt = intention ? findPromptForIntention(prompts, intention.id) : undefined;
     if (!prompt) return this.fallbackResult(fallback);
 
@@ -352,8 +406,9 @@ export class IntentRouterService {
     prompts: Prompt[],
     intentions: FunnelIntention[],
     fallback: { content: string; model: string; totalTokens: number },
+    matchedIntentionId?: string,
   ): Promise<IntentRoutingResult> {
-    const intention = findIntentionByRole(intentions, 'ADMISION');
+    const intention = findIntentionForGroup(intentions, prompts, 'ADMISION', matchedIntentionId);
     const prompt = intention ? findPromptForIntention(prompts, intention.id) : undefined;
     if (!prompt) return this.fallbackResult(fallback);
 
@@ -370,8 +425,9 @@ export class IntentRouterService {
     prompts: Prompt[],
     intentions: FunnelIntention[],
     fallback: { content: string; model: string; totalTokens: number },
+    matchedIntentionId?: string,
   ): Promise<IntentRoutingResult> {
-    const intention = findIntentionByRole(intentions, 'CATEGORIA');
+    const intention = findIntentionForGroup(intentions, prompts, 'CATEGORIA', matchedIntentionId);
     const prompt = intention ? findPromptForIntention(prompts, intention.id) : undefined;
     if (!prompt) return this.fallbackResult(fallback);
 
@@ -409,8 +465,9 @@ export class IntentRouterService {
     intentions: FunnelIntention[],
     fallback: { content: string; model: string; totalTokens: number },
     isFirstMessage = false,
+    matchedIntentionId?: string,
   ): Promise<IntentRoutingResult> {
-    const intention = findIntentionByRole(intentions, 'GENERAL');
+    const intention = findIntentionForGroup(intentions, prompts, 'GENERAL', matchedIntentionId);
     const prompt = intention ? findPromptForIntention(prompts, intention.id) : undefined;
     if (!prompt) return this.fallbackResult(fallback);
 
@@ -442,7 +499,7 @@ export class IntentRouterService {
     fallback: { content: string; model: string; totalTokens: number },
   ): Promise<IntentRoutingResult> {
     // Step 1: Run Prompt 6 (embedding query generator)
-    const embIntention = findIntentionByRole(intentions, 'EMBEDDING');
+    const embIntention = findIntentionForGroup(intentions, prompts, 'EMBEDDING');
     const embPrompt = embIntention ? findPromptForIntention(prompts, embIntention.id) : undefined;
 
     let searchQuery = userMessage;
@@ -487,7 +544,7 @@ export class IntentRouterService {
     }
 
     // Step 3: Run Prompt 7 (multiple programs response)
-    const multiIntention = findIntentionByRole(intentions, 'MULTIPLE');
+    const multiIntention = findIntentionForGroup(intentions, prompts, 'MULTIPLE');
     const multiPrompt = multiIntention ? findPromptForIntention(prompts, multiIntention.id) : undefined;
 
     if (!multiPrompt || contextDocs.length === 0) {
@@ -661,10 +718,21 @@ export class IntentRouterService {
     intention: FunnelIntention | undefined,
     rawIntent: string,
     _intentions: FunnelIntention[],
+    prompts: Prompt[] = [],
   ): string {
     const typeStr = intention?.type ?? rawIntent;
     for (const group of Object.keys(KEYWORDS)) {
       if (matchesKeywords(typeStr, group)) return group;
+    }
+    // Disambiguate by the title of the prompt linked to this specific intention UUID.
+    // Handles cases where multiple intentions share the same type (e.g. PROVIDE_INFO).
+    if (intention) {
+      const linkedPrompt = prompts.find((p) => p.intentionId === intention.id && p.active);
+      if (linkedPrompt) {
+        for (const [group, hints] of Object.entries(TITLE_GROUP_HINTS)) {
+          if (hints.some((re) => re.test(linkedPrompt.title))) return group;
+        }
+      }
     }
     // Try matching raw intent string against keywords
     for (const group of Object.keys(KEYWORDS)) {

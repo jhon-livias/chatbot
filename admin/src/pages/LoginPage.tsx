@@ -72,7 +72,7 @@ export default function LoginPage() {
             <div className="login-header">
               <div className="login-brand">
                 <img
-                  src={theme === 'dark' ? '/logo-uprit-light.svg' : '/logo-uprit-dark.svg'}
+                  src={theme === 'dark' ? '/logo-uprit-dark.svg' : '/logo-uprit-light.svg'}
                   alt="UPRIT Universidad Privada de Trujillo"
                   className="login-brand-logo"
                 />

@@ -901,6 +901,19 @@ export default function DashboardPage() {
   const [includeArchived, setIncludeArchived] = useState(false)
   const [adminFilter, setAdminFilter] = useState<AdminInboxFilter>('all')
 
+  // ── Theme (light/dark) ─────────────────────────────────────────────────
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    try { return (localStorage.getItem('dash-theme') as 'light' | 'dark') ?? 'light' }
+    catch { return 'light' }
+  })
+  const toggleTheme = useCallback(() => {
+    setTheme((t) => {
+      const next = t === 'light' ? 'dark' : 'light'
+      try { localStorage.setItem('dash-theme', next) } catch {}
+      return next
+    })
+  }, [])
+
   const { conversations, total, loading, error, reload: reloadInbox } = useInbox({
     isAdmin,
     agentFilter: isAdmin ? undefined : agentFilter,
@@ -938,7 +951,7 @@ export default function DashboardPage() {
   function closeChat() { navigate('/') }
 
   return (
-    <div className="dash-layout">
+    <div className="dash-layout" data-theme={theme}>
       {/* ── Sidebar ── */}
       <aside className={`dash-sidebar${hasChatOpen ? ' dash-sidebar--hidden-mobile' : ''}`}>
         <header className="dash-sidebar-header">
@@ -957,6 +970,19 @@ export default function DashboardPage() {
             </div>
             <div className="dash-sidebar-actions">
               <SoundToggle />
+              <button className="dash-logout-btn" onClick={toggleTheme} title={theme === 'dark' ? 'Modo claro' : 'Modo oscuro'}>
+                {theme === 'dark' ? (
+                  /* sun */
+                  <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
+                    <path d="M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10zm0 2a7 7 0 1 1 0-14 7 7 0 0 1 0 14zM11 1h2v3h-2V1zm0 19h2v3h-2v-3zM3.515 4.929l1.414-1.414 2.121 2.12-1.414 1.415-2.12-2.121zm13.435 13.436 1.414-1.414 2.121 2.12-1.414 1.415-2.121-2.121zM1 13v-2h3v2H1zm19 0v-2h3v2h-3zM4.929 20.485l-1.414-1.414 2.12-2.121 1.415 1.414-2.121 2.121zm13.436-13.435-1.414-1.414 2.12-2.121 1.415 1.414-2.121 2.121z"/>
+                  </svg>
+                ) : (
+                  /* moon */
+                  <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
+                    <path d="M12 3a9 9 0 1 0 9 9c0-.46-.04-.92-.1-1.36a5.389 5.389 0 0 1-4.4 2.26 5.403 5.403 0 0 1-3.14-9.8c-.44-.06-.9-.1-1.36-.1z"/>
+                  </svg>
+                )}
+              </button>
               <button className="dash-logout-btn" onClick={logout} title="Cerrar sesión">
                 <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
                   <path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/>

@@ -42,17 +42,30 @@ const testAgentId = testAgent.id;
 console.log(`Test agent: ${testAgent.name} (${TEST_USERNAME}) → ${testAgentId}\n`);
 
 const otherAgents = await agentsCol
-  .find({ status: 'Active', username: { $ne: TEST_USERNAME }, role: { $ne: 'admin' } })
+  .find({ status: 'Active', role: { $ne: 'admin' } })
   .project({ id: 1, name: 1, username: 1 })
   .toArray();
 
-if (otherAgents.length === 0) {
+const excludedFromPool = new Set(
+  (process.env.HANDOFF_EXCLUDED_AGENT_USERNAMES ?? 'zero.dev,zero')
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean),
+);
+excludedFromPool.add(TEST_USERNAME);
+
+const eligibleAgents = otherAgents.filter((a) => {
+  const u = (a.username ?? '').toLowerCase();
+  return u && !excludedFromPool.has(u);
+});
+
+if (eligibleAgents.length === 0) {
   console.error('❌ No hay otros agentes activos para reasignar.');
   process.exit(1);
 }
 
 console.log('Agentes destino:');
-for (const a of otherAgents) console.log(`  - ${a.name} (${a.username ?? 'sin username'})`);
+for (const a of eligibleAgents) console.log(`  - ${a.name} (${a.username ?? 'sin username'})`);
 
 if (KEEP_IDS.size > 0) {
   console.log(`\nConservando en ${TEST_USERNAME}: ${[...KEEP_IDS].join(', ')}`);
@@ -81,7 +94,7 @@ console.log(`\nReasignando ${toReassign.length} conversación(es)...\n`);
 
 let idx = 0;
 for (const conv of toReassign) {
-  const target = otherAgents[idx % otherAgents.length];
+  const target = eligibleAgents[idx % eligibleAgents.length];
   idx++;
 
   await convCol.updateOne(

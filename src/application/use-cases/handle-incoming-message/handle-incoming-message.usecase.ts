@@ -3,6 +3,7 @@ import type { ConversationRepository } from '../../../domain/repositories/conver
 import type { UserRepository } from '../../../domain/repositories/user.repository.js';
 import type { ProgramRepository } from '../../../domain/repositories/program.repository.js';
 import type { AgentRepository } from '../../../domain/repositories/agent.repository.js';
+import { getHandoffExcludedUsernames } from '../../services/handoff-excluded-agents.js';
 import type { AiProviderPort } from '../../ports/ai-provider.port.js';
 import type { MessagingProviderPort } from '../../ports/messaging-provider.port.js';
 import type { MediaStoragePort } from '../../ports/media-storage.port.js';
@@ -1049,18 +1050,11 @@ export class HandleIncomingMessageUseCase {
     }
   }
 
-  private getHandoffExcludedUsernames(): Set<string> {
-    const raw = process.env['HANDOFF_EXCLUDED_AGENT_USERNAMES'] ?? 'zero.dev';
-    return new Set(
-      raw.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean),
-    );
-  }
-
   private async pickAgent(): Promise<Agent | null> {
     if (!this.agentRepo) return null;
     try {
       const agents = await this.agentRepo.findActive();
-      const excluded = this.getHandoffExcludedUsernames();
+      const excluded = getHandoffExcludedUsernames();
       const eligible = agents.filter((a) => {
         const username = a.username?.toLowerCase();
         return !username || !excluded.has(username);

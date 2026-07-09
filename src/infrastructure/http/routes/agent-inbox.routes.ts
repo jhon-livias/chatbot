@@ -326,7 +326,11 @@ export function createAgentInboxRouter(
     const conversationId = String(req.params['id']);
 
     try {
-      const result = await takeConversation.execute({ conversationId, agentId });
+      const result = await takeConversation.execute({
+        conversationId,
+        agentId,
+        agentUsername: req.agent!.username,
+      });
       const conversation = await conversationRepo.findById(conversationId);
       const auditExtra: Omit<AgentAuditFields, 'action'> = {
         conversationId,
@@ -351,6 +355,10 @@ export function createAgentInboxRouter(
       }
       if (err instanceof Error && err.message === 'Este chat ya está en atención humana') {
         res.status(409).json({ error: err.message });
+        return;
+      }
+      if (err instanceof Error && err.message === 'Esta cuenta de prueba no puede tomar conversaciones') {
+        res.status(403).json({ error: err.message });
         return;
       }
       throw err;

@@ -6,7 +6,8 @@
  *   node --env-file=.env deploy/reassign-test-agent-chats.mjs
  *
  * Optional env vars:
- *   TEST_AGENT_USERNAME   default: zero.dev
+ *   TEST_AGENT_USERNAME        default: zero.dev
+ *   KEEP_CONVERSATION_IDS      comma-separated IDs to leave on test agent
  *   MONGODB_URI
  *   MONGODB_DB_NAME
  */
@@ -16,6 +17,12 @@ import mongoose from 'mongoose';
 const MONGODB_URI = process.env.MONGODB_URI ?? 'mongodb://localhost:27017/chatbot_uprit';
 const MONGODB_DB_NAME = process.env.MONGODB_DB_NAME ?? 'chatbot_uprit';
 const TEST_USERNAME = (process.env.TEST_AGENT_USERNAME ?? 'zero.dev').toLowerCase().trim();
+const KEEP_IDS = new Set(
+  (process.env.KEEP_CONVERSATION_IDS ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean),
+);
 
 await mongoose.connect(MONGODB_URI, { dbName: MONGODB_DB_NAME });
 console.log(`✅ Connected to MongoDB (${MONGODB_DB_NAME})\n`);
@@ -47,26 +54,38 @@ if (otherAgents.length === 0) {
 console.log('Agentes destino:');
 for (const a of otherAgents) console.log(`  - ${a.name} (${a.username ?? 'sin username'})`);
 
+if (KEEP_IDS.size > 0) {
+  console.log(`\nConservando en ${TEST_USERNAME}: ${[...KEEP_IDS].join(', ')}`);
+}
+
 const convs = await convCol
   .find({ assignedAgentId: testAgentId, status: 'active' })
-  .project({ id: 1, phoneNumber: 1, contactName: 1 })
+  .project({ _id: 1, phoneNumber: 1, contactName: 1 })
   .toArray();
 
-if (convs.length === 0) {
-  console.log('\n✅ No hay conversaciones asignadas a este agente de prueba.');
+const toReassign = convs.filter((c) => !KEEP_IDS.has(String(c._id)));
+const kept = convs.filter((c) => KEEP_IDS.has(String(c._id)));
+
+if (kept.length > 0) {
+  console.log(`\nManteniendo ${kept.length} chat(s) de prueba en ${TEST_USERNAME}:`);
+  for (const c of kept) console.log(`  · ${c.contactName ?? c.phoneNumber ?? String(c._id)}`);
+}
+
+if (toReassign.length === 0) {
+  console.log('\n✅ No hay conversaciones para reasignar.');
   await mongoose.disconnect();
   process.exit(0);
 }
 
-console.log(`\nReasignando ${convs.length} conversación(es)...\n`);
+console.log(`\nReasignando ${toReassign.length} conversación(es)...\n`);
 
 let idx = 0;
-for (const conv of convs) {
+for (const conv of toReassign) {
   const target = otherAgents[idx % otherAgents.length];
   idx++;
 
   await convCol.updateOne(
-    { id: conv.id },
+    { _id: conv._id },
     {
       $set: {
         assignedAgentId: target.id,
@@ -82,11 +101,11 @@ for (const conv of convs) {
     );
   }
 
-  const label = conv.contactName ?? conv.phoneNumber ?? conv.id;
+  const label = conv.contactName ?? conv.phoneNumber ?? String(conv._id);
   console.log(`  ✓ ${label} → ${target.name}`);
 }
 
-console.log(`\n✅ ${convs.length} chat(s) reasignados. "${TEST_USERNAME}" ya no tiene conversaciones.`);
+console.log(`\n✅ ${toReassign.length} chat(s) reasignados. ${kept.length} chat(s) de prueba conservados.`);
 
 await mongoose.disconnect();
 console.log('Done.');

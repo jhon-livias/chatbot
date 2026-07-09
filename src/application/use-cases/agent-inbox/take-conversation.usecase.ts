@@ -1,9 +1,12 @@
 import type { ConversationRepository } from '../../../domain/repositories/conversation.repository.js';
+import type { AgentRepository } from '../../../domain/repositories/agent.repository.js';
 import type { FunnelUserMongoRepository } from '../../../infrastructure/database/mongodb/repositories/funnel-user.mongo-repository.js';
+import { isHandoffExcludedAgent } from '../../services/handoff-excluded-agents.js';
 
 export interface TakeConversationInput {
   conversationId: string;
   agentId: string;
+  agentUsername?: string | null;
 }
 
 export interface TakeConversationOutput {
@@ -19,6 +22,10 @@ export class TakeConversationUseCase {
   ) {}
 
   async execute(input: TakeConversationInput): Promise<TakeConversationOutput> {
+    if (isHandoffExcludedAgent(input.agentUsername)) {
+      throw new Error('Esta cuenta de prueba no puede tomar conversaciones');
+    }
+
     const conversation = await this.conversationRepo.findById(input.conversationId);
     if (!conversation) {
       throw new Error('Conversación no encontrada');

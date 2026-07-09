@@ -1049,15 +1049,27 @@ export class HandleIncomingMessageUseCase {
     }
   }
 
+  private getHandoffExcludedUsernames(): Set<string> {
+    const raw = process.env['HANDOFF_EXCLUDED_AGENT_USERNAMES'] ?? 'zero.dev';
+    return new Set(
+      raw.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean),
+    );
+  }
+
   private async pickAgent(): Promise<Agent | null> {
     if (!this.agentRepo) return null;
     try {
       const agents = await this.agentRepo.findActive();
-      if (agents.length === 0) {
-        logger.warn('[HandleIncomingMessage] No active agents found for handoff');
+      const excluded = this.getHandoffExcludedUsernames();
+      const eligible = agents.filter((a) => {
+        const username = a.username?.toLowerCase();
+        return !username || !excluded.has(username);
+      });
+      if (eligible.length === 0) {
+        logger.warn('[HandleIncomingMessage] No eligible agents found for handoff');
         return null;
       }
-      return agents[Math.floor(Math.random() * agents.length)]!;
+      return eligible[Math.floor(Math.random() * eligible.length)]!;
     } catch (err) {
       logger.error('[HandleIncomingMessage] Failed to fetch agents for handoff', { error: err });
       return null;

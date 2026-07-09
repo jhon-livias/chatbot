@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
+import logoLight from '../assets/logo-uprit-light.svg'
+import logoDark from '../assets/logo-uprit-dark.svg'
 
 const HERO_IMAGE =
   'https://images.pexels.com/photos/267885/pexels-photo-267885.jpeg?auto=compress&cs=tinysrgb&w=1200'
@@ -72,7 +74,7 @@ export default function LoginPage() {
             <div className="login-header">
               <div className="login-brand">
                 <img
-                  src={theme === 'dark' ? '/logo-uprit-dark.svg' : '/logo-uprit-light.svg'}
+                  src={theme === 'dark' ? logoDark : logoLight}
                   alt="UPRIT Universidad Privada de Trujillo"
                   className="login-brand-logo"
                 />

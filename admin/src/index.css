@@ -81,22 +81,45 @@ body { min-height: 100dvh; }
   box-shadow: 0 0 0 3px rgba(0,102,204,.18);
 }
 
-/* ── Login (UPRIT dark theme) ────────────────────────────── */
+/* ── Login — theme tokens ────────────────────────────────── */
+/* Light (default) */
 .login-page {
-  --login-bg: #0f0f0f;
-  --login-surface: rgba(255, 255, 255, .04);
-  --login-border: rgba(255, 255, 255, .1);
-  --login-text: #fafafa;
-  --login-muted: #a1a1aa;
+  --login-bg: #f0f2f5;
+  --login-surface: #ffffff;
+  --login-border: rgba(0, 0, 0, .12);
+  --login-text: #111827;
+  --login-muted: #6b7280;
   --login-accent: #99001a;
   --login-accent-hover: #7a0015;
+  --login-eye: #6b7280;
+  --login-eye-hover: #111827;
+  --login-hero-bg: #e5e7eb;
+  --login-theme-btn: rgba(0,0,0,.06);
+  --login-theme-btn-hover: rgba(0,0,0,.12);
+  --login-theme-color: #374151;
 
+  position: relative;
   min-height: 100dvh;
   display: flex;
   align-items: center;
   background: var(--login-bg);
   color: var(--login-text);
   padding: 5rem 0;
+}
+
+/* Dark override */
+.login-page[data-theme="dark"] {
+  --login-bg: #0f0f0f;
+  --login-surface: rgba(255, 255, 255, .04);
+  --login-border: rgba(255, 255, 255, .1);
+  --login-text: #fafafa;
+  --login-muted: #a1a1aa;
+  --login-eye: #a1a1aa;
+  --login-eye-hover: #fafafa;
+  --login-hero-bg: #1a1a1a;
+  --login-theme-btn: rgba(255,255,255,.08);
+  --login-theme-btn-hover: rgba(255,255,255,.14);
+  --login-theme-color: #d1d5db;
 }
 .login-container {
   width: 100%;
@@ -175,7 +198,13 @@ body { min-height: 100dvh; }
 .login-page .form-group input:disabled {
   opacity: .55;
 }
+/* Light: solid readable error; Dark: softer */
 .login-page .alert-error {
+  background: #fef2f2;
+  color: #b91c1c;
+  border-color: #fecaca;
+}
+.login-page[data-theme="dark"] .alert-error {
   background: rgba(220, 38, 38, .12);
   color: #fca5a5;
   border-color: rgba(220, 38, 38, .35);
@@ -192,12 +221,68 @@ body { min-height: 100dvh; }
 .btn-login:hover:not(:disabled) {
   background: var(--login-accent-hover);
 }
+/* ── Login: password eye toggle ──────────────────────────── */
+.login-pw-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.login-pw-wrap input {
+  width: 100%;
+  padding-right: 2.5rem !important;
+}
+.login-pw-eye {
+  position: absolute;
+  right: .5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--login-eye);
+  border-radius: 6px;
+  transition: color .15s, background .15s;
+  flex-shrink: 0;
+}
+.login-pw-eye:hover {
+  color: var(--login-eye-hover);
+  background: rgba(0,0,0,.06);
+}
+.login-page[data-theme="dark"] .login-pw-eye:hover {
+  background: rgba(255,255,255,.08);
+}
+
+/* ── Login: theme toggle button ──────────────────────────── */
+.login-theme-btn {
+  position: absolute;
+  top: 1.25rem;
+  right: 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: var(--login-theme-btn);
+  color: var(--login-theme-color);
+  cursor: pointer;
+  transition: background .15s, color .15s;
+  z-index: 10;
+}
+.login-theme-btn:hover {
+  background: var(--login-theme-btn-hover);
+}
+
 .login-hero {
   display: none;
   overflow: hidden;
   border-radius: 16px;
   min-height: 28rem;
-  background: #1a1a1a;
+  background: var(--login-hero-bg);
 }
 .login-hero-image {
   width: 100%;

@@ -49,6 +49,7 @@ import type { HandoffBy } from '../../../domain/entities/conversation.entity.js'
 import type { AcademicToolsService } from '../../../infrastructure/ai/tools/academic-tools.service.js';
 import { ACADEMIC_TOOLS } from '../../../infrastructure/ai/tools/academic-tools.definitions.js';
 import { completeWithTools } from '../../../infrastructure/ai/tool-calling-loop.js';
+import { parseStructuredAiResponse } from '../../../infrastructure/ai/parse-structured-ai-response.js';
 
 const CONTEXT_WINDOW_SIZE = 10;
 const MAX_CONSECUTIVE_HANDOFFS = 3;
@@ -301,8 +302,12 @@ export class HandleIncomingMessageUseCase {
     }
 
     // Strip any HANDOFF_TRIGGER token suffix the model may have appended to a normal response.
-    // This keeps the conversation history clean regardless of what the model format chose.
-    const aiContentClean = aiContent
+    // Unwrap internal JSON wire format ({message, purchaseCategory}) so WhatsApp only gets plain text.
+    const structured = parseStructuredAiResponse(aiContent);
+    if (structured.purchaseCategory && !purchaseCategory) {
+      purchaseCategory = structured.purchaseCategory;
+    }
+    const aiContentClean = structured.message
       .replace(/\s*<<HANDOFF_TRIGGER>>\s*$/g, '')
       .replace(/\s*HANDOFF_TRIGGER\s*$/g, '')
       .trim();
@@ -513,7 +518,8 @@ export class HandleIncomingMessageUseCase {
       forcedGroup,
     });
 
-    const aiContentClean = routerResult.content
+    const structured = parseStructuredAiResponse(routerResult.content);
+    const aiContentClean = structured.message
       .replace(/\s*<<HANDOFF_TRIGGER>>\s*$/g, '')
       .replace(/\s*HANDOFF_TRIGGER\s*$/g, '')
       .trim();
@@ -538,7 +544,7 @@ export class HandleIncomingMessageUseCase {
       newCareerId: routerResult.newCareerId ?? conversation.careerId,
       newMetaData: routerResult.newMetaData ?? conversation.metaData,
       newProgramName: routerResult.newProgramName ?? conversation.currentProgramName,
-      purchaseCategory: routerResult.purchaseCategory,
+      purchaseCategory: routerResult.purchaseCategory ?? structured.purchaseCategory,
     });
   }
 

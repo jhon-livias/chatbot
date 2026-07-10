@@ -14,6 +14,7 @@ import { logger } from '../../infrastructure/shared/logger.js';
 import type { AcademicToolsService } from '../../infrastructure/ai/tools/academic-tools.service.js';
 import { ACADEMIC_TOOLS } from '../../infrastructure/ai/tools/academic-tools.definitions.js';
 import { completeWithTools } from '../../infrastructure/ai/tool-calling-loop.js';
+import { parseStructuredAiResponse } from '../../infrastructure/ai/parse-structured-ai-response.js';
 
 export interface IntentRoutingResult {
   content: string;
@@ -30,20 +31,10 @@ export type ForcedRoutingGroup = 'INFO_PROGRAM' | 'ADMISION';
 
 /**
  * Prompts 4 (Categoría) and 5 (General) return JSON: {"message":"...","purchaseCategory":"..."}.
- * Extracts both fields safely; falls back to raw text if not JSON.
+ * Delegates to the shared parser so multiline / fenced / noisy JSON never leaks to WhatsApp.
  */
 function extractMessageAndCategory(raw: string): { message: string; purchaseCategory: string | null } {
-  const trimmed = raw.trim();
-  const start = trimmed.indexOf('{');
-  if (start === -1) return { message: trimmed, purchaseCategory: null };
-  try {
-    const obj = JSON.parse(trimmed.slice(start)) as Record<string, unknown>;
-    const message = typeof obj['message'] === 'string' ? obj['message'] : trimmed;
-    const purchaseCategory = typeof obj['purchaseCategory'] === 'string' ? obj['purchaseCategory'] : null;
-    return { message, purchaseCategory };
-  } catch {
-    return { message: trimmed, purchaseCategory: null };
-  }
+  return parseStructuredAiResponse(raw);
 }
 
 // -----------------------------------------------------------------------

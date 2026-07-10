@@ -144,6 +144,7 @@ async function bootstrap(): Promise<void> {
     metaMediaService,
     localMediaStorage,
     sendProgramBrochure,
+    hybridChatService,
     academicToolsService,
     knowledgeBase,
   );

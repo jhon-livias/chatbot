@@ -4,10 +4,11 @@ import type { UserRepository } from '../../../domain/repositories/user.repositor
 import type { ProgramRepository } from '../../../domain/repositories/program.repository.js';
 import type { AgentRepository } from '../../../domain/repositories/agent.repository.js';
 import { getHandoffExcludedUsernames } from '../../services/handoff-excluded-agents.js';
-import type { AiProviderPort } from '../../ports/ai-provider.port.js';
+import type { AiProviderPort, ChatMessage } from '../../ports/ai-provider.port.js';
 import type { MessagingProviderPort } from '../../ports/messaging-provider.port.js';
 import type { MediaStoragePort } from '../../ports/media-storage.port.js';
 import type { SystemPromptBuilderService } from '../../services/system-prompt-builder.service.js';
+import type { HybridChatService } from '../../services/hybrid-chat.service.js';
 import type { IntentRouterService, ForcedRoutingGroup } from '../../services/intent-router.service.js';
 import {
   parseMenuSelection,
@@ -53,6 +54,10 @@ import { parseStructuredAiResponse } from '../../../infrastructure/ai/parse-stru
 
 const CONTEXT_WINDOW_SIZE = 10;
 const MAX_CONSECUTIVE_HANDOFFS = 3;
+
+/** IntentRouter canned replies when DB prompts fail — hybrid chat should take over instead. */
+const ROUTER_FALLBACK_PATTERN =
+  /no pude procesar esa consulta|no pude obtener esa informaci[oó]n/i;
 
 const FALLBACK_SYSTEM_PROMPT =
   'Eres Angela, asesora estudiantil de UPRIT. Responde de manera concisa, amable y en el mismo idioma que el usuario. Usa texto plano sin markdown porque el canal es WhatsApp. ' +
@@ -102,6 +107,8 @@ export class HandleIncomingMessageUseCase {
     private readonly metaMediaService?: MetaMediaService,
     private readonly mediaStorage?: MediaStoragePort,
     private readonly sendProgramBrochure?: SendProgramBrochureUseCase,
+    /** Primary hybrid engine (knowledge_base.md + Mongo tool calling) for menu routes and router fallbacks. */
+    private readonly hybridChat?: HybridChatService,
     /** Hybrid-architecture guardrail — used only by the monolithic prompt fallback (runMonolithicPrompt). */
     private readonly academicToolsService?: AcademicToolsService,
     /** Static institutional knowledge (context/knowledge_base.md) + strict tool-usage rule. */
@@ -285,15 +292,29 @@ export class HandleIncomingMessageUseCase {
         newMetaData = routerResult.newMetaData ?? conversation.metaData;
         newProgramName = routerResult.newProgramName ?? conversation.currentProgramName;
         purchaseCategory = routerResult.purchaseCategory;
+
+        if (this.isRouterFallbackResponse(aiContent)) {
+          const hybridResult = await this.runHybridChat(conversation);
+          aiContent = hybridResult.content;
+          aiModel = hybridResult.model;
+          aiTokens = hybridResult.totalTokens;
+        }
       } catch (routerErr) {
-        logger.warn('[HandleIncomingMessage] IntentRouter failed — falling back to monolithic prompt', {
+        logger.warn('[HandleIncomingMessage] IntentRouter failed — falling back to hybrid chat', {
           error: routerErr instanceof Error ? routerErr.message : String(routerErr),
         });
-        const fallbackResult = await this.runMonolithicPrompt(conversation, dto.content);
+        const fallbackResult = this.hybridChat
+          ? await this.runHybridChat(conversation)
+          : await this.runMonolithicPrompt(conversation, dto.content);
         aiContent = fallbackResult.content;
         aiModel = fallbackResult.model;
         aiTokens = fallbackResult.totalTokens;
       }
+    } else if (this.hybridChat) {
+      const hybridResult = await this.runHybridChat(conversation);
+      aiContent = hybridResult.content;
+      aiModel = hybridResult.model;
+      aiTokens = hybridResult.totalTokens;
     } else {
       const fallbackResult = await this.runMonolithicPrompt(conversation, dto.content);
       aiContent = fallbackResult.content;
@@ -493,6 +514,33 @@ export class HandleIncomingMessageUseCase {
     forcedGroup: ForcedRoutingGroup,
     intentPhrase: string,
   ): Promise<HandleIncomingMessageResult> {
+    // Menu items (carreras / costos) bypass the legacy Handlebars prompt pipeline — those
+    // DB templates are brittle and fail compilation in prod. The hybrid engine always has
+    // knowledge_base.md + Mongo tool calling available.
+    if (this.hybridChat) {
+      try {
+        const hybridResult = await this.runHybridChat(conversation, intentPhrase);
+        return this.deliverBotTextResponse({
+          conversation,
+          phoneNumberValue,
+          funnelUserId,
+          userMessage,
+          aiContent: hybridResult.content,
+          aiModel: hybridResult.model,
+          aiTokens: hybridResult.totalTokens,
+          newCareerId: conversation.careerId,
+          newMetaData: conversation.metaData,
+          newProgramName: conversation.currentProgramName,
+          purchaseCategory: null,
+        });
+      } catch (err) {
+        logger.error('[HandleIncomingMessage] Hybrid menu route failed — trying IntentRouter', {
+          forcedGroup,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
     if (!this.intentRouter) {
       return this.deliverBotTextResponse({
         conversation,
@@ -523,6 +571,23 @@ export class HandleIncomingMessageUseCase {
       .replace(/\s*<<HANDOFF_TRIGGER>>\s*$/g, '')
       .replace(/\s*HANDOFF_TRIGGER\s*$/g, '')
       .trim();
+
+    if (this.isRouterFallbackResponse(aiContentClean) && this.hybridChat) {
+      const hybridResult = await this.runHybridChat(conversation, intentPhrase);
+      return this.deliverBotTextResponse({
+        conversation,
+        phoneNumberValue,
+        funnelUserId,
+        userMessage,
+        aiContent: hybridResult.content,
+        aiModel: hybridResult.model,
+        aiTokens: hybridResult.totalTokens,
+        newCareerId: conversation.careerId,
+        newMetaData: conversation.metaData,
+        newProgramName: conversation.currentProgramName,
+        purchaseCategory: null,
+      });
+    }
 
     if (this.detectHandoffTrigger(routerResult.content)) {
       return this.startHandoffConfirmation({
@@ -1193,6 +1258,51 @@ export class HandleIncomingMessageUseCase {
         userCategory: purchaseCategory as 'first_contact' | 'interested' | 'ready_to_buy' | 'not_interested' | 'unknown',
       });
     } catch { /* ignore */ }
+  }
+
+  private isRouterFallbackResponse(text: string): boolean {
+    return ROUTER_FALLBACK_PATTERN.test(text);
+  }
+
+  private buildHybridChatHistory(
+    conversation: Conversation,
+    lastUserOverride?: string,
+  ): ChatMessage[] {
+    const history = conversation.getLastNMessages(CONTEXT_WINDOW_SIZE).map((m) => ({
+      role: m.role as 'user' | 'assistant',
+      content: m.content,
+    }));
+
+    if (lastUserOverride && history.length > 0 && history[history.length - 1]!.role === 'user') {
+      history[history.length - 1] = { role: 'user', content: lastUserOverride };
+    }
+
+    return history;
+  }
+
+  private async runHybridChat(
+    conversation: Conversation,
+    lastUserOverride?: string,
+  ): Promise<{ content: string; model: string; totalTokens: number }> {
+    if (!this.hybridChat) {
+      throw new Error('HybridChatService not configured');
+    }
+
+    logger.info('[HandleIncomingMessage] Running hybrid chat engine', {
+      conversationId: conversation.id,
+      overrideLastUser: !!lastUserOverride,
+    });
+
+    const result = await this.hybridChat.chat(
+      this.buildHybridChatHistory(conversation, lastUserOverride),
+    );
+    const structured = parseStructuredAiResponse(result.content);
+
+    return {
+      content: structured.message,
+      model: result.model,
+      totalTokens: result.totalTokens,
+    };
   }
 
   private async runMonolithicPrompt(

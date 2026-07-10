@@ -32,6 +32,7 @@ import {
 } from '../middlewares/agent-media-upload.middleware.js';
 import type { UserRepository } from '../../../domain/repositories/user.repository.js';
 import type { AgentRepository } from '../../../domain/repositories/agent.repository.js';
+import type { MessageRepository } from '../../../domain/repositories/message.repository.js';
 
 async function auditConversationAction(
   conversationRepo: ConversationRepository,
@@ -67,6 +68,7 @@ export function createAgentInboxRouter(
   metaMediaService: MetaMediaService,
   mediaStorage: MediaStoragePort,
   realtimeNotifier?: RealtimeNotifier,
+  messageRepo?: MessageRepository,
 ): Router {
   const router = Router();
 
@@ -82,7 +84,15 @@ export function createAgentInboxRouter(
   );
   const markRead = new MarkConversationReadUseCase(conversationRepo, realtimeNotifier);
   const returnToBot = new ReturnConversationToBotUseCase(conversationRepo);
-  const takeConversation = new TakeConversationUseCase(conversationRepo, funnelUserRepo);
+  const takeConversation = new TakeConversationUseCase(
+    conversationRepo,
+    funnelUserRepo,
+    agentRepo,
+    messagingProvider,
+    funnelMessageRepo,
+    messageRepo,
+    realtimeNotifier,
+  );
   const closeConv = new CloseConversationUseCase(conversationRepo);
   const updateLabels = new UpdateLabelsUseCase(conversationRepo);
   const pinConversation = new PinConversationUseCase(conversationRepo);

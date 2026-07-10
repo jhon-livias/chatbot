@@ -176,6 +176,7 @@ async function bootstrap(): Promise<void> {
     metaMediaService,
     localMediaStorage,
     realtimeNotifier,
+    messageRepo,
   );
   const quickRepliesRouter = createQuickRepliesRouter(quickReplyRepo);
   const chatRouter = createChatRouter(chatController);

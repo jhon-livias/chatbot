@@ -4,6 +4,10 @@ import type { UserRepository } from '../../../domain/repositories/user.repositor
 import type { ProgramRepository } from '../../../domain/repositories/program.repository.js';
 import type { AgentRepository } from '../../../domain/repositories/agent.repository.js';
 import { getHandoffExcludedUsernames } from '../../services/handoff-excluded-agents.js';
+import {
+  buildHandoffAssignedLeadMessage,
+  buildHandoffPendingLeadMessage,
+} from '../../services/handoff-lead-messages.service.js';
 import type { AiProviderPort, ChatMessage } from '../../ports/ai-provider.port.js';
 import type { MessagingProviderPort } from '../../ports/messaging-provider.port.js';
 import type { MediaStoragePort } from '../../ports/media-storage.port.js';
@@ -65,9 +69,6 @@ const FALLBACK_SYSTEM_PROMPT =
 
 const HANDOFF_CONFIRMATION_MSG =
   '¿Deseas que te contacte un asesor de admisiones para brindarte información personalizada?';
-
-const DEFAULT_HANDOFF_TRANSITION_MSG =
-  'Te comunico con {agentName}, asesor de admisiones de la UPRIT. En un momento te atiende.';
 
 const HANDOFF_DECLINED_MSG =
   'Entendido, con gusto seguiré ayudándote. ¿En qué más puedo asistirte?';
@@ -858,16 +859,11 @@ export class HandleIncomingMessageUseCase {
 
     if (isAffirmative) {
       const agent = await this.pickAgent();
-      const transitionMsg = agent
-        ? this.buildHandoffTransitionMessage(agent.name)
-        : 'Un asesor de admisiones de la UPRIT te atenderá en breve.';
-
       return this.activateHumanHandoff({
         conversation,
         phoneNumberValue,
         funnelUserId,
         handoffBy: 'user',
-        leadMessage: transitionMsg,
         userMessage,
         agent,
       });
@@ -943,24 +939,62 @@ export class HandleIncomingMessageUseCase {
     phoneNumberValue: string;
     funnelUserId: string;
     handoffBy: HandoffBy;
-    leadMessage: string;
     userMessage: Message;
     agent?: Agent | null;
+    /** Optional override (e.g. loop-detection message). */
+    leadMessage?: string;
   }): Promise<HandleIncomingMessageResult> {
     const agent = params.agent ?? await this.pickAgent();
-    let conversation = params.conversation.withHumanHandoff(agent?.id ?? null, params.handoffBy);
-    await this.conversationRepo.save(conversation);
+    const leadMessage =
+      params.leadMessage?.trim()
+        ? params.leadMessage
+        : agent
+          ? buildHandoffAssignedLeadMessage(agent)
+          : buildHandoffPendingLeadMessage();
+    const replyText = formatWhatsAppText(leadMessage);
 
-    await this.messagingProvider.sendTextMessage({
-      to: params.phoneNumberValue,
-      body: params.leadMessage,
+    let conversation = params.conversation.withHumanHandoff(agent?.id ?? null, params.handoffBy);
+
+    const assistantMessage = Message.create({
+      id: MessageId.generate(),
+      conversationId: conversation.id,
+      role: 'assistant',
+      content: replyText,
+      status: 'processing',
+      timestamp: new Date(),
+      metadata: { model: 'handoff-transition', assignedAgentId: agent?.id ?? null },
     });
 
-    await this.saveFunnelMessage(params.funnelUserId, params.leadMessage, 'bot');
+    conversation = conversation.addMessage(assistantMessage);
+    await this.conversationRepo.save(conversation);
+
+    const sendResult = await this.messagingProvider.sendTextMessage({
+      to: params.phoneNumberValue,
+      body: replyText,
+    });
+
+    if (this.messageRepo && sendResult.messageId) {
+      const sentMessage = assistantMessage.withExternalId(sendResult.messageId).markAs('sent');
+      await this.messageRepo.save(sentMessage);
+    }
+
+    this.realtimeNotifier?.notifyNewMessage({
+      conversationId: conversation.id,
+      conversationMode: conversation.mode,
+      assignedAgentId: conversation.assignedAgentId,
+      message: assistantMessage,
+    });
+
+    await this.saveFunnelMessage(params.funnelUserId, replyText, 'bot');
     await this.updateFunnelUserStage(params.funnelUserId, 'HANDOFF', agent?.id ?? null);
 
     if (agent) {
       await this.tryNotifyAgent(conversation, params.phoneNumberValue, agent);
+    } else {
+      logger.warn('[HandleIncomingMessage] Human handoff without assigned agent — awaiting manual claim', {
+        phone: params.phoneNumberValue,
+        conversationId: conversation.id,
+      });
     }
 
     logger.info('[HandleIncomingMessage] Human handoff activated', {
@@ -991,15 +1025,9 @@ export class HandleIncomingMessageUseCase {
     return {
       conversationId: conversation.id,
       userMessageId: params.userMessage.id.value,
-      aiResponseId: '',
-      aiResponseContent: params.leadMessage,
+      aiResponseId: assistantMessage.id.value,
+      aiResponseContent: replyText,
     };
-  }
-
-  private buildHandoffTransitionMessage(agentName: string): string {
-    const template =
-      process.env['HANDOFF_TRANSITION_MESSAGE'] ?? DEFAULT_HANDOFF_TRANSITION_MSG;
-    return template.replaceAll('{agentName}', agentName);
   }
 
   private isNonTextMedia(dto: HandleIncomingMessageDto): boolean {
@@ -1145,10 +1173,15 @@ export class HandleIncomingMessageUseCase {
         return !username || !excluded.has(username);
       });
       if (eligible.length === 0) {
-        logger.warn('[HandleIncomingMessage] No eligible agents found for handoff');
+        logger.warn('[HandleIncomingMessage] No eligible agents found for handoff', {
+          totalActive: agents.length,
+          excludedUsernames: [...excluded],
+        });
         return null;
       }
-      return eligible[Math.floor(Math.random() * eligible.length)]!;
+      const fieldAgents = eligible.filter((a) => a.role === 'agent');
+      const pool = fieldAgents.length > 0 ? fieldAgents : eligible;
+      return pool[Math.floor(Math.random() * pool.length)]!;
     } catch (err) {
       logger.error('[HandleIncomingMessage] Failed to fetch agents for handoff', { error: err });
       return null;

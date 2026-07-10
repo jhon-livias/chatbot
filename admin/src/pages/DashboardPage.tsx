@@ -384,9 +384,11 @@ function ConvItem({
             )}
             {conv.lastMessagePreview ??
               (conv.mode === 'human'
-                ? showAssignedAgent && conv.assignedAgentName
-                  ? `Asignado: ${conv.assignedAgentName}`
-                  : 'En atención'
+                ? conv.assignedAgentName
+                  ? showAssignedAgent
+                    ? `Asignado: ${conv.assignedAgentName}`
+                    : 'En atención'
+                  : 'Pendiente de asesor'
                 : 'En bot')}
           </span>
         </div>
@@ -453,7 +455,9 @@ function ChatPanel({
   }, [showAttachMenu])
 
   const isBotPreview = botPreview === true && meta?.mode === 'bot'
-  const canReply = !readOnly && !isBotPreview
+  const isUnassignedHuman = meta?.mode === 'human' && !meta?.assignedAgentId
+  const canReply = !readOnly && !isBotPreview && !isUnassignedHuman
+  const showTakeBtn = isBotPreview || isUnassignedHuman
   const csWindowOpen = meta?.csWindowOpen ?? true
   const windowBlocked = canReply && !csWindowOpen
   const isPinned = meta?.pinned ?? false
@@ -641,6 +645,7 @@ function ChatPanel({
           <span className="dash-chat-header-sub">
             {meta?.contactName ? `${meta.phoneNumber} · ` : ''}
             WhatsApp · {meta?.mode === 'human' ? 'Atención humana' : 'Bot'}
+            {isUnassignedHuman ? ' · Pendiente de asesor' : ''}
             {meta?.assignedAgentName ? ` · Asesor: ${meta.assignedAgentName}` : ''}
           </span>
           {meta?.labels && meta.labels.length > 0 && (
@@ -685,9 +690,9 @@ function ChatPanel({
           )}
         </div>
 
-        {isBotPreview && (
+        {showTakeBtn && (
           <button className="dash-take-btn" onClick={handleTakeConversation} disabled={taking}>
-            {taking ? '…' : 'Tomar conversación'}
+            {taking ? '…' : isUnassignedHuman ? 'Asignarme este chat' : 'Tomar conversación'}
           </button>
         )}
         {canReply && (

@@ -78,10 +78,12 @@ export class RealtimeNotifier {
     if (mode === 'bot') {
       this.realtime.broadcastToAll(event);
     } else {
-      // human mode: only admins + the assigned agent
-      this.realtime.broadcastToAdmins(event);
       if (assignedAgentId !== null) {
+        this.realtime.broadcastToAdmins(event);
         this.realtime.sendToAgent(assignedAgentId, event);
+      } else {
+        // Unassigned human handoff — notify all agents so someone can claim the chat.
+        this.realtime.broadcastToAll(event);
       }
     }
   }

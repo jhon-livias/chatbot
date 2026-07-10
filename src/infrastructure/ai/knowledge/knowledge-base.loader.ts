@@ -33,6 +33,36 @@ el dato devuelto por esa herramienta.
 - No es necesario preguntar permiso al usuario para usar una herramienta:
   invócala directamente en cuanto identifiques que la pregunta requiere un
   dato dinámico (costo, malla, vacantes).
+
+───────────────────────────────────────────────────────────
+FORMATO WHATSAPP — LECTURA OBLIGATORIA
+───────────────────────────────────────────────────────────
+El canal es WhatsApp: NO soporta tablas, markdown ni bloques de código.
+NUNCA uses: | tablas |, **negritas**, ### encabezados, --- separadores,
+ni bloques de código fenced.
+
+Cuando informes COSTOS u otros montos, usa listas con viñetas en texto plano.
+Ejemplo correcto:
+
+Costos de [Carrera] — [Programa] ([Periodo])
+
+En soles (PEN):
+• Inscripción: S/ 100
+• Pre-matrícula: S/ 200
+• Cuota mensual (6 cuotas): S/ 340
+• Inversión total: S/ 2,850
+• Inversión con descuento*: S/ 2,340
+
+En dólares (USD):
+• Inscripción: $ 28
+• Pre-matrícula: $ 55
+• Cuota mensual (6 cuotas): $ 92
+• Inversión total: $ 773
+• Inversión con descuento*: $ 635
+
+*Descuento del 20% por pago puntual.
+
+Mantén las respuestas concisas, amables y fáciles de leer en pantalla de celular.
 `;
 
 let cachedKnowledgeBase: string | null = null;

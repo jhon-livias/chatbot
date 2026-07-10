@@ -416,11 +416,18 @@ export class HandleIncomingMessageUseCase {
       aiContent, aiModel, aiTokens, newCareerId, newMetaData, newProgramName, purchaseCategory,
     } = params;
 
+    const structured = parseStructuredAiResponse(aiContent);
+    const outboundText = structured.message
+      .replace(/\s*<<HANDOFF_TRIGGER>>\s*$/g, '')
+      .replace(/\s*HANDOFF_TRIGGER\s*$/g, '')
+      .trim();
+    const effectiveCategory = purchaseCategory ?? structured.purchaseCategory;
+
     const assistantMessage = Message.create({
       id: MessageId.generate(),
       conversationId: conversation.id,
       role: 'assistant',
-      content: aiContent,
+      content: outboundText,
       status: 'processing',
       timestamp: new Date(),
       metadata: { model: aiModel, tokens: aiTokens },
@@ -432,7 +439,7 @@ export class HandleIncomingMessageUseCase {
       .withIntentContext(newCareerId, newMetaData, newProgramName);
     await this.conversationRepo.save(updatedConversation);
 
-    const replyText = formatWhatsAppText(aiContent);
+    const replyText = formatWhatsAppText(outboundText);
 
     const sendResult = await this.messagingProvider.sendTextMessage({
       to: phoneNumberValue,
@@ -454,8 +461,8 @@ export class HandleIncomingMessageUseCase {
     }
 
     await this.saveFunnelMessage(funnelUserId, replyText, 'bot');
-    if (purchaseCategory) {
-      await this.updateFunnelUserCategory(funnelUserId, purchaseCategory);
+    if (effectiveCategory) {
+      await this.updateFunnelUserCategory(funnelUserId, effectiveCategory);
     }
 
     return {

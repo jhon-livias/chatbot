@@ -14,6 +14,12 @@ export interface ProgramRepository {
   findByModality(modality: Modality): Promise<Program[]>;
   findByFacultyId(facultyId: string): Promise<Program[]>;
   search(query: string): Promise<Program[]>;
+  /**
+   * Case/diacritic-insensitive partial name match against active programs.
+   * Used to resolve free-text career names supplied by the LLM (tool calling)
+   * into a concrete Program document.
+   */
+  findByNameContains(name: string): Promise<Program[]>;
   save(program: Program): Promise<Program>;
   delete(id: string): Promise<void>;
 }

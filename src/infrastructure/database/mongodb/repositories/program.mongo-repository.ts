@@ -7,6 +7,41 @@ import type { FlattenMaps } from 'mongoose';
 
 type LeanProgram = FlattenMaps<IProgramDocument>;
 
+const ACCENT_VARIANTS: Record<string, string> = {
+  a: 'a\u00e1',
+  e: 'e\u00e9',
+  i: 'i\u00ed',
+  o: 'o\u00f3',
+  u: 'u\u00fa\u00fc',
+  n: 'n\u00f1',
+};
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Builds a regex source that matches `input` case-insensitively regardless of
+ * accents on either side (DB has accents, user/LLM input often doesn't, or vice versa).
+ */
+function buildAccentInsensitivePattern(input: string): string | null {
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+
+  return trimmed
+    .split(/\s+/)
+    .map((word) =>
+      escapeRegExp(word)
+        .split('')
+        .map((char) => {
+          const variants = ACCENT_VARIANTS[char.toLowerCase()];
+          return variants ? `[${variants}]` : char;
+        })
+        .join(''),
+    )
+    .join('.*');
+}
+
 export class ProgramMongoRepository implements ProgramRepository {
   async findById(id: string): Promise<Program | null> {
     const doc = await ProgramModel.findOne({ id }).lean();
@@ -53,6 +88,18 @@ export class ProgramMongoRepository implements ProgramRepository {
     )
       .sort({ score: { $meta: 'textScore' } })
       .lean();
+    return (docs as LeanProgram[]).map((d) => this.toDomain(d));
+  }
+
+  async findByNameContains(name: string): Promise<Program[]> {
+    const pattern = buildAccentInsensitivePattern(name);
+    if (!pattern) return [];
+
+    const docs = await ProgramModel.find({
+      status: 'active',
+      name: { $regex: pattern, $options: 'i' },
+    }).lean();
+
     return (docs as LeanProgram[]).map((d) => this.toDomain(d));
   }
 

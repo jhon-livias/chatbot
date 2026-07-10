@@ -29,6 +29,14 @@ import { createAuthRouter } from './infrastructure/http/routes/auth.routes.js';
 import { createAgentInboxRouter } from './infrastructure/http/routes/agent-inbox.routes.js';
 import { createQuickRepliesRouter } from './infrastructure/http/routes/quick-replies.routes.js';
 import { QuickReplyMongoRepository } from './infrastructure/database/mongodb/repositories/quick-reply.mongo-repository.js';
+import { EnrollmentPolicyMongoRepository } from './infrastructure/database/mongodb/repositories/enrollment-policy.mongo-repository.js';
+import { CurriculumVersionMongoRepository } from './infrastructure/database/mongodb/repositories/curriculum-version.mongo-repository.js';
+import { AcademicToolsService } from './infrastructure/ai/tools/academic-tools.service.js';
+import { loadKnowledgeBase, resolveKnowledgeBasePath } from './infrastructure/ai/knowledge/knowledge-base.loader.js';
+import { ChatSessionStore } from './infrastructure/ai/chat-session.store.js';
+import { HybridChatService } from './application/services/hybrid-chat.service.js';
+import { ChatController } from './infrastructure/http/controllers/chat.controller.js';
+import { createChatRouter } from './infrastructure/http/routes/chat.routes.js';
 import { createServer } from './infrastructure/http/server.js';
 import { WebSocketRealtimeAdapter } from './infrastructure/realtime/websocket-realtime.adapter.js';
 import { logger } from './infrastructure/shared/logger.js';
@@ -57,12 +65,26 @@ async function bootstrap(): Promise<void> {
   const funnelUserRepo = new FunnelUserMongoRepository();
   const funnelMessageRepo = new FunnelMessageMongoRepository();
   const quickReplyRepo = new QuickReplyMongoRepository();
+  const enrollmentPolicyRepo = new EnrollmentPolicyMongoRepository();
+  const curriculumVersionRepo = new CurriculumVersionMongoRepository();
 
   // ── AI ────────────────────────────────────────────────────────────────────
   const deepSeekConfig = loadDeepSeekConfig();
   const templateService = new TemplateService();
   const deepSeekAdapter = new DeepSeekAdapter(deepSeekConfig);
   logger.info('[Bootstrap] AI engine initialized', { model: deepSeekConfig.model });
+
+  // ── Hybrid chat engine (DeepSeek tool calling + MongoDB, static KB from context/knowledge_base.md) ──
+  const academicToolsService = new AcademicToolsService(
+    programRepo,
+    enrollmentPolicyRepo,
+    curriculumVersionRepo,
+  );
+  const knowledgeBase = loadKnowledgeBase(resolveKnowledgeBasePath());
+  const hybridChatService = new HybridChatService(deepSeekAdapter, academicToolsService, knowledgeBase);
+  const chatSessionStore = new ChatSessionStore();
+  const chatController = new ChatController(hybridChatService, chatSessionStore);
+  logger.info('[Bootstrap] Hybrid chat engine initialized', { knowledgeBaseChars: knowledgeBase.length });
 
   const promptBuilder = new SystemPromptBuilderService();
   const intentRouter = new IntentRouterService(
@@ -151,6 +173,7 @@ async function bootstrap(): Promise<void> {
     realtimeNotifier,
   );
   const quickRepliesRouter = createQuickRepliesRouter(quickReplyRepo);
+  const chatRouter = createChatRouter(chatController);
 
   const corsOrigins = [
     ...(process.env['CORS_ORIGINS'] ?? '').split(',').filter(Boolean),
@@ -162,7 +185,7 @@ async function bootstrap(): Promise<void> {
     port: Number(process.env['PORT'] ?? 3000),
     corsOrigins: [...new Set(corsOrigins)],
     mediaStoragePath: process.env['MEDIA_STORAGE_PATH'] ?? '/app/uploads',
-  }, quickRepliesRouter);
+  }, quickRepliesRouter, chatRouter);
 
   // start() receives httpServer now that it's ready
   realtimeAdapter.start(httpServer);

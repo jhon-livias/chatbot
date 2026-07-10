@@ -72,6 +72,8 @@ WORKDIR /app
 COPY --from=prod-deps  --chown=appuser:appgroup /app/node_modules ./node_modules
 COPY --from=builder    --chown=appuser:appgroup /app/dist         ./dist
 COPY --chown=appuser:appgroup package.json ./
+# Static knowledge base injected verbatim into the chat engine's system prompt — must ship with the image.
+COPY --chown=appuser:appgroup context ./context
 
 # ── Directorio de uploads con permisos del usuario de la app ─────────────────
 RUN mkdir -p /app/uploads && chown -R appuser:appgroup /app/uploads

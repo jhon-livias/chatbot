@@ -23,6 +23,7 @@ export function createServer(
   agentInboxRouter: Router,
   options: ServerOptions,
   quickRepliesRouter?: Router,
+  chatRouter?: Router,
 ): AppServer {
   const app = express();
 
@@ -82,6 +83,7 @@ export function createServer(
   app.use(authRouter);
   app.use(agentInboxRouter);
   if (quickRepliesRouter) app.use(quickRepliesRouter);
+  if (chatRouter) app.use(chatRouter);
 
   app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
     logger.error('[HTTP] Unhandled error', { error: err.message, stack: err.stack });

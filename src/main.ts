@@ -94,6 +94,8 @@ async function bootstrap(): Promise<void> {
     funnelIntentionRepo,
     contextSourceRepo,
     facultyRepo,
+    academicToolsService,
+    knowledgeBase,
   );
 
   // ── Messaging provider + Media ────────────────────────────────────────────
@@ -142,6 +144,8 @@ async function bootstrap(): Promise<void> {
     metaMediaService,
     localMediaStorage,
     sendProgramBrochure,
+    academicToolsService,
+    knowledgeBase,
   );
 
   const handleMessageStatus = new HandleMessageStatusUseCase(

@@ -46,6 +46,9 @@ import { resolveContactName } from '../../../infrastructure/shared/resolve-conta
 import { logger } from '../../../infrastructure/shared/logger.js';
 import type { Agent } from '../../../domain/entities/agent.entity.js';
 import type { HandoffBy } from '../../../domain/entities/conversation.entity.js';
+import type { AcademicToolsService } from '../../../infrastructure/ai/tools/academic-tools.service.js';
+import { ACADEMIC_TOOLS } from '../../../infrastructure/ai/tools/academic-tools.definitions.js';
+import { completeWithTools } from '../../../infrastructure/ai/tool-calling-loop.js';
 
 const CONTEXT_WINDOW_SIZE = 10;
 const MAX_CONSECUTIVE_HANDOFFS = 3;
@@ -98,6 +101,10 @@ export class HandleIncomingMessageUseCase {
     private readonly metaMediaService?: MetaMediaService,
     private readonly mediaStorage?: MediaStoragePort,
     private readonly sendProgramBrochure?: SendProgramBrochureUseCase,
+    /** Hybrid-architecture guardrail — used only by the monolithic prompt fallback (runMonolithicPrompt). */
+    private readonly academicToolsService?: AcademicToolsService,
+    /** Static institutional knowledge (context/knowledge_base.md) + strict tool-usage rule. */
+    private readonly knowledgeBaseOverlay?: string,
   ) {}
 
   async execute(dto: HandleIncomingMessageDto): Promise<HandleIncomingMessageResult> {
@@ -1189,20 +1196,33 @@ export class HandleIncomingMessageUseCase {
     // Prefer the system prompt already stored in the conversation (built fresh at creation).
     // Only fall back to a full DB rebuild if the stored prompt is missing/empty — this avoids
     // re-fetching 53 programs (~300 ms + ~40 KB tokens) on every single message.
-    const systemPrompt =
+    const baseSystemPrompt =
       conversation.systemPrompt?.trim()
         ? conversation.systemPrompt
         : await this.buildSystemPrompt();
+
+    // Hybrid-architecture guardrail: overlay the static knowledge base + strict anti-hallucination
+    // rule on top of whatever base prompt was resolved above — never invent costs/malla/vacantes,
+    // always call the tool. This mirrors IntentRouterService's behavior for the fallback path.
+    const systemPrompt = this.knowledgeBaseOverlay
+      ? `${baseSystemPrompt}\n\n${this.knowledgeBaseOverlay}`
+      : baseSystemPrompt;
 
     const recentMessages = conversation.getLastNMessages(CONTEXT_WINDOW_SIZE);
     const chatHistory = recentMessages.map((m) => ({
       role: m.role as 'user' | 'assistant',
       content: m.content,
     }));
-    const result = await this.aiProvider.complete([
-      { role: 'system', content: systemPrompt },
-      ...chatHistory,
-    ]);
+    const messages = [{ role: 'system' as const, content: systemPrompt }, ...chatHistory];
+
+    if (!this.academicToolsService) {
+      const result = await this.aiProvider.complete(messages);
+      return { content: result.content, model: result.model, totalTokens: result.totalTokens };
+    }
+
+    const result = await completeWithTools(this.aiProvider, messages, ACADEMIC_TOOLS, (name, args) =>
+      this.academicToolsService!.execute(name, args),
+    );
     return { content: result.content, model: result.model, totalTokens: result.totalTokens };
   }
 

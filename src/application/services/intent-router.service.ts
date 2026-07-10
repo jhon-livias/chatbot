@@ -11,6 +11,9 @@ import type { Prompt } from '../../domain/entities/prompt.entity.js';
 import type { Program } from '../../domain/entities/program.entity.js';
 import { TemplateService } from '../../infrastructure/ai/template/template.service.js';
 import { logger } from '../../infrastructure/shared/logger.js';
+import type { AcademicToolsService } from '../../infrastructure/ai/tools/academic-tools.service.js';
+import { ACADEMIC_TOOLS } from '../../infrastructure/ai/tools/academic-tools.definitions.js';
+import { completeWithTools } from '../../infrastructure/ai/tool-calling-loop.js';
 
 export interface IntentRoutingResult {
   content: string;
@@ -191,6 +194,14 @@ function extractIntentJson(raw: string): {
  *
  * If the prompts / intentions are not yet configured in the DB this service throws so
  * the caller (HandleIncomingMessageUseCase) can fall back to the monolithic system prompt.
+ *
+ * HYBRID ARCHITECTURE GUARDRAIL: every response-generating prompt (INFO_PROGRAM, ADMISION,
+ * CATEGORIA, GENERAL, MULTIPLE) is executed through the shared tool-calling loop with
+ * `academicToolsService` and gets `knowledgeBaseOverlay` appended to its DB-authored system
+ * prompt. This means the model can NEVER invent a cost, malla curricular or vacancy figure —
+ * it must call obtener_costo_carrera / obtener_informacion_carrera and answer with the hard
+ * data returned from MongoDB, regardless of which Handlebars template (stored in the DB)
+ * ends up being used for that turn.
  */
 export class IntentRouterService {
   private readonly templateService: TemplateService;
@@ -202,6 +213,8 @@ export class IntentRouterService {
     private readonly funnelIntentionRepo: FunnelIntentionRepository,
     private readonly contextSourceRepo: ContextSourceDataRepository,
     private readonly facultyRepo?: FacultyRepository,
+    private readonly academicToolsService?: AcademicToolsService,
+    private readonly knowledgeBaseOverlay?: string,
   ) {
     this.templateService = new TemplateService();
   }
@@ -703,11 +716,26 @@ export class IntentRouterService {
     if (compiled.missingVariables.length > 0) {
       logger.warn('[IntentRouter] Missing template variables', { missing: compiled.missingVariables });
     }
+
+    // Overlay the static knowledge base + strict anti-hallucination rule on top of the
+    // DB-authored (Handlebars) prompt — never replace the marketing/behavior instructions,
+    // only reinforce them with the single source of truth for facts + tool-usage rules.
+    const systemContent = this.knowledgeBaseOverlay
+      ? `${compiled.rendered}\n\n${this.knowledgeBaseOverlay}`
+      : compiled.rendered;
+
     const msgs: ChatMessage[] = [
-      { role: 'system', content: compiled.rendered },
+      { role: 'system', content: systemContent },
       { role: 'user', content: userMessage },
     ];
-    return this.aiProvider.complete(msgs);
+
+    if (!this.academicToolsService) {
+      return this.aiProvider.complete(msgs);
+    }
+
+    return completeWithTools(this.aiProvider, msgs, ACADEMIC_TOOLS, (name, args) =>
+      this.academicToolsService!.execute(name, args),
+    );
   }
 
   private fallbackResult(r: { content: string; model: string; totalTokens: number }): IntentRoutingResult {

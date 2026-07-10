@@ -18,6 +18,29 @@ export const HANDOFF_BUTTON_IDS = {
 
 const MENU_KEYWORD_PATTERN = /\b(men[uú]|menu|opciones|ayuda|inicio)\b/i;
 
+/** Bare greetings on first contact — show the interactive menu instead of invoking the LLM. */
+const BARE_GREETING_PATTERN =
+  /^(?:hola|buen(?:os?|as)\s+(?:d[ií]as|tardes|noches)|hey|hi|hello|saludos)(?:[\s,!?.]+(?:hola|buen(?:os?|as)\s+(?:d[ií]as|tardes|noches)))*[\s,!?.]*$/i;
+
+/** Signals the user already has a concrete question — skip the first-message menu gate. */
+const SUBSTANTIVE_QUERY_PATTERN =
+  /\?|convalid|costo|admisi[oó]n|carrera|programa|ingenier|derecho|maestr|doctor|bachiller|posgrado|pregrado|matricul|inscrib|requisit|horario|sede|ubicaci|asesor|informaci|egresad|alumno|estudi|facultad|malla|curso|cr[eé]dito|empres|arquitect|industrial|civil|administraci/i;
+
+function isBareGreeting(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return true;
+  if (BARE_GREETING_PATTERN.test(trimmed)) return true;
+  // Short openers without an actual question (e.g. "Hola Angela") still get the menu.
+  return trimmed.length <= 35 && !SUBSTANTIVE_QUERY_PATTERN.test(trimmed);
+}
+
+export function isMainMenuTrigger(text: string, isFirstMessage: boolean): boolean {
+  const trimmed = text.trim();
+  if (MENU_KEYWORD_PATTERN.test(trimmed)) return true;
+  if (isFirstMessage) return isBareGreeting(trimmed);
+  return false;
+}
+
 /** Canonical user phrases passed to the intent router per menu row. */
 export const MENU_INTENT_PHRASES: Record<MenuSelection, string> = {
   [MENU_ROW_IDS.CAREERS]: 'Quiero información sobre las carreras disponibles',
@@ -25,11 +48,6 @@ export const MENU_INTENT_PHRASES: Record<MenuSelection, string> = {
   [MENU_ROW_IDS.HANDOFF]: 'Quiero hablar con un asesor',
   [MENU_ROW_IDS.LOCATION]: '¿Dónde está la sede de UPRIT?',
 };
-
-export function isMainMenuTrigger(text: string, isFirstMessage: boolean): boolean {
-  if (isFirstMessage) return true;
-  return MENU_KEYWORD_PATTERN.test(text.trim());
-}
 
 export function parseMenuSelection(interactiveReplyId: string | undefined): MenuSelection | null {
   if (!interactiveReplyId) return null;

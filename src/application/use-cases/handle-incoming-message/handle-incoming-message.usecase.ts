@@ -649,7 +649,7 @@ export class HandleIncomingMessageUseCase {
     const menuPayload = buildMainMenuList(phoneNumberValue);
     const sendResult = await this.messagingProvider.sendInteractiveList(menuPayload);
 
-    const summaryContent = `${menuPayload.body} [Menú: Info carreras / Costos / Asesor / Ubicación]`;
+    const summaryContent = menuPayload.body;
 
     const assistantMessage = Message.create({
       id: MessageId.generate(),

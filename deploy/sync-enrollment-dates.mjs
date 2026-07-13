@@ -13,7 +13,18 @@ const uri = process.env.MONGODB_URI;
 const dbName = process.env.MONGODB_DB_NAME || 'uprit-db';
 const targetProgramId = process.argv[2] || null;
 
+const DATE_TYPE_LABELS = {
+  INSCRIPTION_DATE: 'Fecha de Inscripción',
+  ALLOWED_ADMISSIONS: 'Permitir Admisiones hasta',
+  EXAM: 'Exámen de Admisión',
+  START_DATE: 'Inicio de Clases',
+};
+
 const MARKER = 'Fechas de enrolamiento:';
+
+function resolveDateTypeLabel(type) {
+  return DATE_TYPE_LABELS[type] ?? type;
+}
 
 function formatDate(date) {
   return new Intl.DateTimeFormat('es-PE', {
@@ -33,17 +44,23 @@ function formatEnrollmentDatesSection(policies) {
     const label = [policy.careerType, policy.period].filter(Boolean).join(' - ');
     if (label) lines.push(`  ${label}:`);
     for (const entry of policy.dates) {
-      lines.push(`    - ${entry.type}: ${formatDate(entry.date)}`);
+      lines.push(`    - ${resolveDateTypeLabel(entry.type)}: ${formatDate(entry.date)}`);
     }
   }
   return lines.length > 1 ? lines.join('\n') : '';
 }
 
+function stripEnrollmentDatesSection(baseContent) {
+  const markerIndex = (baseContent || '').indexOf(MARKER);
+  if (markerIndex < 0) return baseContent || '';
+  return (baseContent || '').slice(0, markerIndex).trimEnd();
+}
+
 function appendEnrollmentDates(baseContent, policies) {
   const section = formatEnrollmentDatesSection(policies);
   if (!section) return null;
-  if ((baseContent || '').includes(MARKER)) return null;
-  return `${(baseContent || '').trimEnd()}\n${section}`;
+  const stripped = stripEnrollmentDatesSection(baseContent);
+  return `${stripped}\n${section}`;
 }
 
 if (!uri) {
@@ -87,7 +104,13 @@ try {
     if (existing) {
       const nextContent = appendEnrollmentDates(existing.full_text_content, careerPolicies);
       if (!nextContent) {
-        console.log(`SKIP (already indexed): ${programName}`);
+        console.log(`SKIP (no dates): ${programName}`);
+        skipped++;
+        continue;
+      }
+
+      if (nextContent === existing.full_text_content) {
+        console.log(`SKIP (unchanged): ${programName}`);
         skipped++;
         continue;
       }

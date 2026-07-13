@@ -178,11 +178,11 @@ export class AcademicToolsService {
     }
 
     let curriculum: CurriculumVersionSummary | null;
-    let policy: EnrollmentPolicySummary | null;
+    let policies: EnrollmentPolicySummary[];
     try {
-      [curriculum, policy] = await Promise.all([
+      [curriculum, policies] = await Promise.all([
         this.curriculumRepo.findActiveByCareerId(program.id),
-        this.enrollmentPolicyRepo.findActiveByCareerId(program.id),
+        this.enrollmentPolicyRepo.findAllActiveByCareerId(program.id),
       ]);
     } catch (err) {
       logger.error('[AcademicTools] obtener_informacion_carrera — Mongo lookup failed (Curriculum/Policy)', {
@@ -192,7 +192,7 @@ export class AcademicToolsService {
       return dbErrorPayload('curriculum_or_policy_lookup');
     }
 
-    const fechasEnrolamiento = formatEnrollmentDatesForTool(policy);
+    const fechasEnrolamiento = formatEnrollmentDatesForTool(policies);
 
     return JSON.stringify({
       ok: true,
@@ -208,7 +208,7 @@ export class AcademicToolsService {
       requisitosAdmision: program.admissionRequirements,
       whatsappAdmision: program.whatsappContact,
       brochureUrl: program.brochureUrl,
-      periodoVigente: policy?.period ?? null,
+      periodoVigente: policies[0]?.period ?? null,
       fechasEnrolamiento,
       mensajeFechas: fechasEnrolamiento.length
         ? undefined

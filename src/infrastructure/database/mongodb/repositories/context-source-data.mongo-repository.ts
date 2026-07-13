@@ -14,19 +14,19 @@ export class ContextSourceDataMongoRepository implements ContextSourceDataReposi
   ) {}
 
   async findByProgramId(programId: string): Promise<ContextSourceData | null> {
-    const [doc, policy] = await Promise.all([
+    const [doc, policies] = await Promise.all([
       ContextSourceDataModel.findOne({ original_id: programId }).lean(),
-      this.enrollmentPolicyRepo.findActiveByCareerId(programId),
+      this.enrollmentPolicyRepo.findAllActiveByCareerId(programId),
     ]);
 
     if (doc) {
       return {
         originalId: doc.original_id,
-        fullTextContent: appendEnrollmentDateFromPolicy(doc.full_text_content, policy),
+        fullTextContent: appendEnrollmentDateFromPolicy(doc.full_text_content, policies),
         programName: doc.program_name,
       };
     }
-    return this.buildFromProgram(programId, policy);
+    return this.buildFromProgram(programId, policies);
   }
 
   async findByProgramName(name: string): Promise<ContextSourceData | null> {
@@ -34,10 +34,10 @@ export class ContextSourceDataMongoRepository implements ContextSourceDataReposi
       program_name: { $regex: new RegExp(name.trim(), 'i') },
     }).lean();
     if (doc) {
-      const policy = await this.enrollmentPolicyRepo.findActiveByCareerId(doc.original_id);
+      const policies = await this.enrollmentPolicyRepo.findAllActiveByCareerId(doc.original_id);
       return {
         originalId: doc.original_id,
-        fullTextContent: appendEnrollmentDateFromPolicy(doc.full_text_content, policy),
+        fullTextContent: appendEnrollmentDateFromPolicy(doc.full_text_content, policies),
         programName: doc.program_name,
       };
     }
@@ -61,14 +61,14 @@ export class ContextSourceDataMongoRepository implements ContextSourceDataReposi
         .lean();
 
       if (docs.length > 0) {
-        const policiesByCareer = await this.enrollmentPolicyRepo.findActiveByCareerIds(
+        const policiesByCareer = await this.enrollmentPolicyRepo.findAllActiveByCareerIds(
           docs.map((d) => d.original_id),
         );
         return docs.map((d) => ({
           originalId: d.original_id,
           fullTextContent: appendEnrollmentDateFromPolicy(
             d.full_text_content,
-            policiesByCareer.get(d.original_id) ?? null,
+            policiesByCareer.get(d.original_id) ?? [],
           ),
           programName: d.program_name,
         }));
@@ -90,7 +90,7 @@ export class ContextSourceDataMongoRepository implements ContextSourceDataReposi
       .limit(limit)
       .lean();
 
-    const policiesByCareer = await this.enrollmentPolicyRepo.findActiveByCareerIds(
+    const policiesByCareer = await this.enrollmentPolicyRepo.findAllActiveByCareerIds(
       progs.map((p) => p.id),
     );
 
@@ -98,7 +98,7 @@ export class ContextSourceDataMongoRepository implements ContextSourceDataReposi
       originalId: prog.id,
       fullTextContent: this.buildProgramText(
         prog,
-        policiesByCareer.get(prog.id) ?? null,
+        policiesByCareer.get(prog.id) ?? [],
       ),
       programName: prog.name,
     }));
@@ -106,21 +106,21 @@ export class ContextSourceDataMongoRepository implements ContextSourceDataReposi
 
   private async buildFromProgram(
     programId: string,
-    policy?: Awaited<ReturnType<EnrollmentPolicyRepository['findActiveByCareerId']>>,
+    policies?: Awaited<ReturnType<EnrollmentPolicyRepository['findAllActiveByCareerId']>>,
   ): Promise<ContextSourceData | null> {
     const prog = await ProgramModel.findOne({ id: programId }).lean();
     if (!prog) return null;
-    const resolvedPolicy = policy ?? (await this.enrollmentPolicyRepo.findActiveByCareerId(programId));
+    const resolvedPolicies = policies ?? (await this.enrollmentPolicyRepo.findAllActiveByCareerId(programId));
     return {
       originalId: prog.id,
-      fullTextContent: this.buildProgramText(prog, resolvedPolicy),
+      fullTextContent: this.buildProgramText(prog, resolvedPolicies),
       programName: prog.name,
     };
   }
 
   private buildProgramText(
     prog: Record<string, unknown>,
-    policy: Awaited<ReturnType<EnrollmentPolicyRepository['findActiveByCareerId']>> = null,
+    policies: Awaited<ReturnType<EnrollmentPolicyRepository['findAllActiveByCareerId']>> = [],
   ): string {
     const lines: string[] = [];
     if (prog['name']) lines.push(`Nombre: ${prog['name']}`);
@@ -143,6 +143,6 @@ export class ContextSourceDataMongoRepository implements ContextSourceDataReposi
         .join(' | ');
       lines.push(`Inversión: ${costStr}`);
     }
-    return appendEnrollmentDateFromPolicy(lines.join('\n'), policy);
+    return appendEnrollmentDateFromPolicy(lines.join('\n'), policies);
   }
 }

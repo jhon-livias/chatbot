@@ -65,6 +65,14 @@ export class EnrollmentPolicyMongoRepository implements EnrollmentPolicyReposito
     return doc ? toSummary(doc) : null;
   }
 
+  async findAllActiveByCareerId(careerId: string): Promise<EnrollmentPolicySummary[]> {
+    const docs = await EnrollmentPolicyModel.find({ careerId, isActive: true })
+      .sort({ updatedAt: -1 })
+      .lean();
+
+    return docs.map((doc) => toSummary(doc));
+  }
+
   async findActiveByCareerIds(careerIds: string[]): Promise<Map<string, EnrollmentPolicySummary | null>> {
     const uniqueIds = [...new Set(careerIds.filter(Boolean))];
     const result = new Map<string, EnrollmentPolicySummary | null>();
@@ -85,6 +93,31 @@ export class EnrollmentPolicyMongoRepository implements EnrollmentPolicyReposito
       if (result.get(doc.careerId) === null) {
         result.set(doc.careerId, toSummary(doc));
       }
+    }
+
+    return result;
+  }
+
+  async findAllActiveByCareerIds(careerIds: string[]): Promise<Map<string, EnrollmentPolicySummary[]>> {
+    const uniqueIds = [...new Set(careerIds.filter(Boolean))];
+    const result = new Map<string, EnrollmentPolicySummary[]>();
+    if (uniqueIds.length === 0) return result;
+
+    const docs = await EnrollmentPolicyModel.find({
+      careerId: { $in: uniqueIds },
+      isActive: true,
+    })
+      .sort({ updatedAt: -1 })
+      .lean();
+
+    for (const id of uniqueIds) {
+      result.set(id, []);
+    }
+
+    for (const doc of docs) {
+      const list = result.get(doc.careerId) ?? [];
+      list.push(toSummary(doc));
+      result.set(doc.careerId, list);
     }
 
     return result;

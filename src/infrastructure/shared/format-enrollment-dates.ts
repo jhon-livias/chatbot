@@ -2,6 +2,17 @@ import type { EnrollmentPolicySummary } from '../../domain/repositories/enrollme
 
 const ENROLLMENT_DATES_MARKER = 'Fechas de enrolamiento:';
 
+const DATE_TYPE_LABELS: Record<string, string> = {
+  INSCRIPTION_DATE: 'Fecha de Inscripción',
+  ALLOWED_ADMISSIONS: 'Permitir Admisiones hasta',
+  EXAM: 'Exámen de Admisión',
+  START_DATE: 'Inicio de Clases',
+};
+
+function resolveDateTypeLabel(type: string): string {
+  return DATE_TYPE_LABELS[type] ?? type.replace(/_/g, ' ').toLowerCase().replace(/^\w/, (c) => c.toUpperCase());
+}
+
 function formatDate(date: Date): string {
   return new Intl.DateTimeFormat('es-PE', {
     day: 'numeric',
@@ -22,7 +33,7 @@ export function formatEnrollmentDatesSection(policies: EnrollmentPolicySummary[]
     if (label) lines.push(`  ${label}:`);
 
     for (const entry of policy.dates) {
-      lines.push(`    - ${entry.type}: ${formatDate(entry.date)}`);
+      lines.push(`    - ${resolveDateTypeLabel(entry.type)}: ${formatDate(entry.date)}`);
     }
   }
 
@@ -34,12 +45,19 @@ export function formatEnrollmentDatesFromPolicy(policy: EnrollmentPolicySummary 
   return formatEnrollmentDatesSection([policy]);
 }
 
-export function formatEnrollmentDatesForTool(policy: EnrollmentPolicySummary | null): Array<{ tipo: string; fecha: string }> {
-  if (!policy || policy.dates.length === 0) return [];
-  return policy.dates.map((entry) => ({
-    tipo: entry.type,
-    fecha: formatDate(entry.date),
-  }));
+export function formatEnrollmentDatesForTool(
+  policies: EnrollmentPolicySummary[],
+): Array<{ periodo: string; tipoCarrera: string; fechas: Array<{ tipo: string; fecha: string }> }> {
+  return policies
+    .filter((policy) => policy.dates.length > 0)
+    .map((policy) => ({
+      periodo: policy.period,
+      tipoCarrera: policy.careerType,
+      fechas: policy.dates.map((entry) => ({
+        tipo: resolveDateTypeLabel(entry.type),
+        fecha: formatDate(entry.date),
+      })),
+    }));
 }
 
 export function appendEnrollmentDates(
@@ -47,15 +65,20 @@ export function appendEnrollmentDates(
   policies: EnrollmentPolicySummary[],
 ): string {
   const section = formatEnrollmentDatesSection(policies);
-  if (!section) return baseContent;
-  if (baseContent.includes(ENROLLMENT_DATES_MARKER)) return baseContent;
-  return `${baseContent.trimEnd()}\n${section}`;
+  if (!section) return stripEnrollmentDatesSection(baseContent);
+  const stripped = stripEnrollmentDatesSection(baseContent);
+  return stripped ? `${stripped}\n${section}` : section;
 }
 
 export function appendEnrollmentDateFromPolicy(
   baseContent: string,
-  policy: EnrollmentPolicySummary | null,
+  policies: EnrollmentPolicySummary[],
 ): string {
-  if (!policy) return baseContent;
-  return appendEnrollmentDates(baseContent, [policy]);
+  return appendEnrollmentDates(baseContent, policies);
+}
+
+function stripEnrollmentDatesSection(baseContent: string): string {
+  const markerIndex = baseContent.indexOf(ENROLLMENT_DATES_MARKER);
+  if (markerIndex < 0) return baseContent;
+  return baseContent.slice(0, markerIndex).trimEnd();
 }

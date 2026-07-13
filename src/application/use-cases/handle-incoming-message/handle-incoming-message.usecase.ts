@@ -55,6 +55,11 @@ import type { AcademicToolsService } from '../../../infrastructure/ai/tools/acad
 import { ACADEMIC_TOOLS } from '../../../infrastructure/ai/tools/academic-tools.definitions.js';
 import { completeWithTools } from '../../../infrastructure/ai/tool-calling-loop.js';
 import { parseStructuredAiResponse } from '../../../infrastructure/ai/parse-structured-ai-response.js';
+import {
+  MessageBatchDebouncer,
+  joinBatchedUserTexts,
+  type BatchedInboundText,
+} from '../../services/message-batch-debouncer.service.js';
 
 const CONTEXT_WINDOW_SIZE = 10;
 const MAX_CONSECUTIVE_HANDOFFS = 3;
@@ -114,6 +119,11 @@ export class HandleIncomingMessageUseCase {
     private readonly academicToolsService?: AcademicToolsService,
     /** Static institutional knowledge (context/knowledge_base.md) + strict tool-usage rule. */
     private readonly knowledgeBaseOverlay?: string,
+    /**
+     * Batches rapid consecutive text messages per phone into one AI turn.
+     * Does not change reply style — only when AI is invoked.
+     */
+    private readonly messageDebouncer?: MessageBatchDebouncer,
   ) {}
 
   async execute(dto: HandleIncomingMessageDto): Promise<HandleIncomingMessageResult> {
@@ -194,11 +204,13 @@ export class HandleIncomingMessageUseCase {
 
     // ── 3. Human mode: bot silenced — queue message for assigned agent ───
     if (conversation.isHumanMode()) {
+      this.messageDebouncer?.cancel(phoneNumber.value);
       return this.handleHumanModeInbound(conversation, dto, phoneNumber.value);
     }
 
     // ── 4. Handoff pending: user is answering the yes/no confirmation ────
     if (conversation.handoffState === 'pending') {
+      this.messageDebouncer?.cancel(phoneNumber.value);
       return this.handlePendingHandoffReply(conversation, dto, phoneNumber.value);
     }
 
@@ -229,6 +241,7 @@ export class HandleIncomingMessageUseCase {
     // ── F8: menu list selection → mapped flow ─────────────────────────────
     const menuSelection = parseMenuSelection(dto.interactiveReplyId);
     if (menuSelection) {
+      this.messageDebouncer?.cancel(phoneNumber.value);
       return this.handleMenuSelection({
         selection: menuSelection,
         conversation,
@@ -241,6 +254,7 @@ export class HandleIncomingMessageUseCase {
 
     // ── F8: main menu (first message or keyword) — layer before AI router ─
     if (isMainMenuTrigger(dto.content, isFirstMessage)) {
+      this.messageDebouncer?.cancel(phoneNumber.value);
       return this.sendMainMenu({
         conversation,
         phoneNumberValue: phoneNumber.value,
@@ -255,6 +269,7 @@ export class HandleIncomingMessageUseCase {
       (dto.contentType ?? 'text') === 'text' &&
       isBrochureRequest(dto.content)
     ) {
+      this.messageDebouncer?.cancel(phoneNumber.value);
       const program = await this.resolveProgramForBrochure(conversation, dto.content);
       if (program) {
         return this.handleBrochureRequest({
@@ -267,7 +282,132 @@ export class HandleIncomingMessageUseCase {
       }
     }
 
-    // ── AI response: try intent routing first, fall back to monolithic prompt ──
+    // ── Debounce rapid consecutive texts into one AI turn ─────────────────
+    // Messages are already persisted above; only the AI reply is delayed.
+    if (this.messageDebouncer?.enabled) {
+      const pending: BatchedInboundText = {
+        content: dto.content,
+        externalMessageId: dto.externalMessageId,
+        userMessageId: userMessage.id.value,
+        conversationId: conversation.id,
+        funnelUserId,
+        isFirstMessage,
+        timestamp: dto.timestamp,
+        ...(dto.profileName !== undefined && { profileName: dto.profileName }),
+      };
+
+      this.messageDebouncer.schedule(phoneNumber.value, pending, async (batch) => {
+        await this.flushDebouncedTextBatch(phoneNumber.value, batch);
+      });
+
+      return {
+        conversationId: conversation.id,
+        userMessageId: userMessage.id.value,
+        aiResponseId: '',
+        aiResponseContent: '',
+      };
+    }
+
+    return this.generateAndDeliverAiReply({
+      conversation,
+      phoneNumberValue: phoneNumber.value,
+      funnelUserId,
+      userMessage,
+      userContent: dto.content,
+      isFirstMessage,
+      ...(dto.profileName !== undefined && { profileName: dto.profileName }),
+    });
+  }
+
+  /**
+   * After the debounce window, reload conversation and answer once for the whole batch.
+   */
+  private async flushDebouncedTextBatch(
+    phoneNumberValue: string,
+    batch: BatchedInboundText[],
+  ): Promise<void> {
+    if (batch.length === 0) return;
+
+    const last = batch[batch.length - 1]!;
+    const conversation = await this.conversationRepo.findById(last.conversationId);
+    if (!conversation) {
+      logger.warn('[HandleIncomingMessage] Debounced batch dropped — conversation missing', {
+        conversationId: last.conversationId,
+        batchSize: batch.length,
+      });
+      return;
+    }
+
+    if (conversation.isHumanMode() || conversation.handoffState === 'pending') {
+      logger.info('[HandleIncomingMessage] Debounced batch skipped — conversation left bot mode', {
+        conversationId: conversation.id,
+        mode: conversation.mode,
+        handoffState: conversation.handoffState,
+        batchSize: batch.length,
+      });
+      return;
+    }
+
+    const combinedContent = joinBatchedUserTexts(batch.map((item) => item.content));
+    if (!combinedContent) return;
+
+    const userMessage =
+      conversation.messages.find((m) => m.id.value === last.userMessageId) ??
+      conversation.messages.filter((m) => m.role === 'user').at(-1);
+
+    if (!userMessage) {
+      logger.warn('[HandleIncomingMessage] Debounced batch dropped — user message missing', {
+        conversationId: conversation.id,
+        userMessageId: last.userMessageId,
+      });
+      return;
+    }
+
+    logger.info('[HandleIncomingMessage] Processing debounced text batch', {
+      conversationId: conversation.id,
+      phone: phoneNumberValue,
+      batchSize: batch.length,
+      combinedLength: combinedContent.length,
+    });
+
+    await this.generateAndDeliverAiReply({
+      conversation,
+      phoneNumberValue,
+      funnelUserId: last.funnelUserId,
+      userMessage,
+      userContent: combinedContent,
+      isFirstMessage: batch.some((item) => item.isFirstMessage),
+      ...(last.profileName !== undefined && { profileName: last.profileName }),
+      ...(batch.length > 1 && { collapseTrailingUserMessages: batch.length }),
+    });
+  }
+
+  /**
+   * Existing AI pipeline (intent router → hybrid → monolithic). Unchanged reply behavior;
+   * only the userContent may be a joined multi-bubble batch.
+   */
+  private async generateAndDeliverAiReply(params: {
+    conversation: Conversation;
+    phoneNumberValue: string;
+    funnelUserId: string;
+    userMessage: Message;
+    userContent: string;
+    isFirstMessage: boolean;
+    profileName?: string;
+    /** When set, collapse the last N consecutive user bubbles into one turn for hybrid chat. */
+    collapseTrailingUserMessages?: number;
+  }): Promise<HandleIncomingMessageResult> {
+    let {
+      conversation,
+      phoneNumberValue,
+      funnelUserId,
+      userMessage,
+      userContent,
+      isFirstMessage,
+      profileName,
+      collapseTrailingUserMessages,
+    } = params;
+
     let aiContent: string;
     let aiModel: string;
     let aiTokens: number;
@@ -280,7 +420,7 @@ export class HandleIncomingMessageUseCase {
       try {
         const routerResult = await this.intentRouter.route({
           messages: conversation.messages,
-          userMessage: dto.content,
+          userMessage: userContent,
           careerId: conversation.careerId,
           metaData: conversation.metaData,
           programName: conversation.currentProgramName,
@@ -295,7 +435,11 @@ export class HandleIncomingMessageUseCase {
         purchaseCategory = routerResult.purchaseCategory;
 
         if (this.isRouterFallbackResponse(aiContent)) {
-          const hybridResult = await this.runHybridChat(conversation);
+          const hybridResult = await this.runHybridChat(
+            conversation,
+            userContent,
+            collapseTrailingUserMessages,
+          );
           aiContent = hybridResult.content;
           aiModel = hybridResult.model;
           aiTokens = hybridResult.totalTokens;
@@ -305,26 +449,28 @@ export class HandleIncomingMessageUseCase {
           error: routerErr instanceof Error ? routerErr.message : String(routerErr),
         });
         const fallbackResult = this.hybridChat
-          ? await this.runHybridChat(conversation)
-          : await this.runMonolithicPrompt(conversation, dto.content);
+          ? await this.runHybridChat(conversation, userContent, collapseTrailingUserMessages)
+          : await this.runMonolithicPrompt(conversation, userContent);
         aiContent = fallbackResult.content;
         aiModel = fallbackResult.model;
         aiTokens = fallbackResult.totalTokens;
       }
     } else if (this.hybridChat) {
-      const hybridResult = await this.runHybridChat(conversation);
+      const hybridResult = await this.runHybridChat(
+        conversation,
+        userContent,
+        collapseTrailingUserMessages,
+      );
       aiContent = hybridResult.content;
       aiModel = hybridResult.model;
       aiTokens = hybridResult.totalTokens;
     } else {
-      const fallbackResult = await this.runMonolithicPrompt(conversation, dto.content);
+      const fallbackResult = await this.runMonolithicPrompt(conversation, userContent);
       aiContent = fallbackResult.content;
       aiModel = fallbackResult.model;
       aiTokens = fallbackResult.totalTokens;
     }
 
-    // Strip any HANDOFF_TRIGGER token suffix the model may have appended to a normal response.
-    // Unwrap internal JSON wire format ({message, purchaseCategory}) so WhatsApp only gets plain text.
     const structured = parseStructuredAiResponse(aiContent);
     if (structured.purchaseCategory && !purchaseCategory) {
       purchaseCategory = structured.purchaseCategory;
@@ -341,32 +487,31 @@ export class HandleIncomingMessageUseCase {
 
       if (newConsecutive >= MAX_CONSECUTIVE_HANDOFFS) {
         logger.warn('[HandleIncomingMessage] Loop detected — triggering automatic handoff', {
-          phone: phoneNumber.value,
+          phone: phoneNumberValue,
           consecutiveHandoffs: newConsecutive,
         });
 
-        const funnelUserId = await this.upsertFunnelUser(phoneNumber.value, dto.profileName);
+        const resolvedFunnelUserId = await this.upsertFunnelUser(phoneNumberValue, profileName);
         return this.activateHumanHandoff({
           conversation: conversation.incrementHandoffs(),
-          phoneNumberValue: phoneNumber.value,
-          funnelUserId,
+          phoneNumberValue,
+          funnelUserId: resolvedFunnelUserId,
           handoffBy: 'bot',
           leadMessage: HANDOFF_LOOP_MSG,
           userMessage,
         });
       }
 
-      // Ask the user if they want to be contacted by an advisor
       conversation = conversation.incrementHandoffs().withHandoffState('pending');
       await this.conversationRepo.save(conversation);
 
-      const { body: confirmBody } = await this.sendHandoffConfirmation(phoneNumber.value);
+      const { body: confirmBody } = await this.sendHandoffConfirmation(phoneNumberValue);
 
       await this.saveFunnelMessage(funnelUserId, confirmBody, 'bot');
       await this.updateFunnelUserStage(funnelUserId, 'DECISION', null);
 
       logger.info('[HandleIncomingMessage] HANDOFF_TRIGGER detected — asking for confirmation', {
-        phone: phoneNumber.value,
+        phone: phoneNumberValue,
         consecutiveHandoffs: conversation.consecutiveHandoffs,
       });
 
@@ -378,10 +523,9 @@ export class HandleIncomingMessageUseCase {
       };
     }
 
-    // Normal response: save assistant message and reply
     return this.deliverBotTextResponse({
       conversation,
-      phoneNumberValue: phoneNumber.value,
+      phoneNumberValue,
       funnelUserId,
       userMessage,
       aiContent: aiContentClean,
@@ -1307,11 +1451,26 @@ export class HandleIncomingMessageUseCase {
   private buildHybridChatHistory(
     conversation: Conversation,
     lastUserOverride?: string,
+    collapseTrailingUserMessages?: number,
   ): ChatMessage[] {
     const history = conversation.getLastNMessages(CONTEXT_WINDOW_SIZE).map((m) => ({
       role: m.role as 'user' | 'assistant',
       content: m.content,
     }));
+
+    if (collapseTrailingUserMessages && collapseTrailingUserMessages > 1 && lastUserOverride) {
+      let removed = 0;
+      while (
+        history.length > 0 &&
+        history[history.length - 1]!.role === 'user' &&
+        removed < collapseTrailingUserMessages
+      ) {
+        history.pop();
+        removed++;
+      }
+      history.push({ role: 'user', content: lastUserOverride });
+      return history;
+    }
 
     if (lastUserOverride && history.length > 0 && history[history.length - 1]!.role === 'user') {
       history[history.length - 1] = { role: 'user', content: lastUserOverride };
@@ -1323,6 +1482,7 @@ export class HandleIncomingMessageUseCase {
   private async runHybridChat(
     conversation: Conversation,
     lastUserOverride?: string,
+    collapseTrailingUserMessages?: number,
   ): Promise<{ content: string; model: string; totalTokens: number }> {
     if (!this.hybridChat) {
       throw new Error('HybridChatService not configured');
@@ -1331,10 +1491,11 @@ export class HandleIncomingMessageUseCase {
     logger.info('[HandleIncomingMessage] Running hybrid chat engine', {
       conversationId: conversation.id,
       overrideLastUser: !!lastUserOverride,
+      collapseTrailingUserMessages: collapseTrailingUserMessages ?? 0,
     });
 
     const result = await this.hybridChat.chat(
-      this.buildHybridChatHistory(conversation, lastUserOverride),
+      this.buildHybridChatHistory(conversation, lastUserOverride, collapseTrailingUserMessages),
     );
     const structured = parseStructuredAiResponse(result.content);
 

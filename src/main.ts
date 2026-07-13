@@ -35,6 +35,10 @@ import { AcademicToolsService } from './infrastructure/ai/tools/academic-tools.s
 import { loadKnowledgeBase, resolveKnowledgeBasePath } from './infrastructure/ai/knowledge/knowledge-base.loader.js';
 import { ChatSessionStore } from './infrastructure/ai/chat-session.store.js';
 import { HybridChatService } from './application/services/hybrid-chat.service.js';
+import {
+  MessageBatchDebouncer,
+  loadMessageDebounceMs,
+} from './application/services/message-batch-debouncer.service.js';
 import { ChatController } from './infrastructure/http/controllers/chat.controller.js';
 import { createChatRouter } from './infrastructure/http/routes/chat.routes.js';
 import { createServer } from './infrastructure/http/server.js';
@@ -85,6 +89,13 @@ async function bootstrap(): Promise<void> {
   const chatSessionStore = new ChatSessionStore();
   const chatController = new ChatController(hybridChatService, chatSessionStore);
   logger.info('[Bootstrap] Hybrid chat engine initialized', { knowledgeBaseChars: knowledgeBase.length });
+
+  const messageDebounceMs = loadMessageDebounceMs();
+  const messageDebouncer = new MessageBatchDebouncer(messageDebounceMs);
+  logger.info('[Bootstrap] Message batch debounce configured', {
+    delayMs: messageDebounceMs,
+    enabled: messageDebouncer.enabled,
+  });
 
   const promptBuilder = new SystemPromptBuilderService();
   const intentRouter = new IntentRouterService(
@@ -147,6 +158,7 @@ async function bootstrap(): Promise<void> {
     hybridChatService,
     academicToolsService,
     knowledgeBase,
+    messageDebouncer,
   );
 
   const handleMessageStatus = new HandleMessageStatusUseCase(

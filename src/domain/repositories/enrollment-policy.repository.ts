@@ -11,6 +11,11 @@ export interface PaymentOptionSummary {
   discount: number;
 }
 
+export interface EnrollmentDateSummary {
+  type: string;
+  date: Date;
+}
+
 /** Flat, read-only projection of an active enrollment/cost policy for a career. */
 export interface EnrollmentPolicySummary {
   careerId: string;
@@ -23,13 +28,15 @@ export interface EnrollmentPolicySummary {
   numberOfInstallments: number;
   description: string;
   paymentOptions: PaymentOptionSummary[];
+  dates: EnrollmentDateSummary[];
 }
 
 /**
  * Read-only persistence port for career cost/enrollment policies.
- * This is the ONLY source of truth the chatbot may use to answer cost questions.
+ * This is the ONLY source of truth the chatbot may use to answer cost and enrollment date questions.
  */
 export interface EnrollmentPolicyRepository {
   /** Returns the most recently updated active policy for a career, or null if none exists. */
   findActiveByCareerId(careerId: string): Promise<EnrollmentPolicySummary | null>;
+  findActiveByCareerIds(careerIds: string[]): Promise<Map<string, EnrollmentPolicySummary | null>>;
 }

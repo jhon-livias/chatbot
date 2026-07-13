@@ -46,9 +46,11 @@ export const OBTENER_INFORMACION_CARRERA_TOOL: ToolDefinition = {
     description:
       'Consulta en la base de datos oficial de la universidad la información detallada de una carrera: ' +
       'duración, modalidades disponibles, malla curricular (ciclos y cursos con créditos), grado académico, ' +
-      'título profesional, requisitos de admisión y contacto de WhatsApp de admisión. ' +
+      'título profesional, requisitos de admisión, fechas de enrolamiento (inscripción, examen de admisión, ' +
+      'inicio de clases, cierre de admisiones) y contacto de WhatsApp de admisión. ' +
       'Debes usar esta herramienta SIEMPRE que el usuario pregunte por la malla curricular, cursos, duración exacta, ' +
-      'modalidad, requisitos o vacantes de una carrera específica. Nunca inventes esta información.',
+      'modalidad, requisitos, fechas, examen de admisión, inicio de clases o vacantes de una carrera específica. ' +
+      'Nunca inventes esta información.',
     parameters: NOMBRE_CARRERA_PARAM,
   },
 };

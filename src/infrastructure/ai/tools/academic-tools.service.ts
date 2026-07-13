@@ -9,6 +9,7 @@ import type {
 import type { ProgramRepository } from '../../../domain/repositories/program.repository.js';
 import type { Program } from '../../../domain/entities/program.entity.js';
 import { TOOL_NAMES } from './academic-tools.definitions.js';
+import { formatEnrollmentDatesForTool } from '../../shared/format-enrollment-dates.js';
 import { logger } from '../../shared/logger.js';
 
 interface ToolArgs {
@@ -177,15 +178,21 @@ export class AcademicToolsService {
     }
 
     let curriculum: CurriculumVersionSummary | null;
+    let policy: EnrollmentPolicySummary | null;
     try {
-      curriculum = await this.curriculumRepo.findActiveByCareerId(program.id);
+      [curriculum, policy] = await Promise.all([
+        this.curriculumRepo.findActiveByCareerId(program.id),
+        this.enrollmentPolicyRepo.findActiveByCareerId(program.id),
+      ]);
     } catch (err) {
-      logger.error('[AcademicTools] obtener_informacion_carrera — Mongo lookup failed (CurriculumVersion)', {
+      logger.error('[AcademicTools] obtener_informacion_carrera — Mongo lookup failed (Curriculum/Policy)', {
         careerId: program.id,
         error: err instanceof Error ? err.message : String(err),
       });
-      return dbErrorPayload('curriculum_lookup');
+      return dbErrorPayload('curriculum_or_policy_lookup');
     }
+
+    const fechasEnrolamiento = formatEnrollmentDatesForTool(policy);
 
     return JSON.stringify({
       ok: true,
@@ -201,6 +208,12 @@ export class AcademicToolsService {
       requisitosAdmision: program.admissionRequirements,
       whatsappAdmision: program.whatsappContact,
       brochureUrl: program.brochureUrl,
+      periodoVigente: policy?.period ?? null,
+      fechasEnrolamiento,
+      mensajeFechas: fechasEnrolamiento.length
+        ? undefined
+        : 'No hay fechas de enrolamiento activas registradas para esta carrera en la base de datos; ' +
+          'no inventes fechas de examen, inscripción ni inicio de clases.',
       mallaCurricular: curriculum
         ? {
             version: curriculum.version,

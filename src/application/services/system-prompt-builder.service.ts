@@ -1,4 +1,5 @@
 import type { Program } from '../../domain/entities/program.entity.js';
+import { withCurrentDateContext } from '../../infrastructure/shared/current-date-context.js';
 
 const BASE_INSTRUCTIONS = `Eres Angela, asesora de admisiones oficial de la UPRIT (Universidad Privada de Trujillo). Tu objetivo es informar, orientar y calificar a personas interesadas en los programas academicos. Responde de forma concisa, amable y profesional en el mismo idioma que el usuario. Usa SOLO texto plano sin markdown (sin **, *, #, guiones, ni bloques de codigo) porque el canal es WhatsApp.
 
@@ -44,7 +45,7 @@ function truncate(text: string, max: number): string {
 export class SystemPromptBuilderService {
   build(programs: Program[]): string {
     if (programs.length === 0) {
-      return BASE_INSTRUCTIONS;
+      return withCurrentDateContext(BASE_INSTRUCTIONS);
     }
 
     const blocks: string[] = [];
@@ -59,11 +60,11 @@ export class SystemPromptBuilderService {
 
     const programBlocks = blocks.join('\n---\n');
 
-    return `${BASE_INSTRUCTIONS}
+    return withCurrentDateContext(`${BASE_INSTRUCTIONS}
 
 == PROGRAMAS ACADEMICOS DE UPRIT ==
 
-${programBlocks}`;
+${programBlocks}`);
   }
 
   private formatProgram(p: Program): string {

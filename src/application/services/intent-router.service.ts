@@ -11,6 +11,7 @@ import type { Prompt } from '../../domain/entities/prompt.entity.js';
 import type { Program } from '../../domain/entities/program.entity.js';
 import { TemplateService } from '../../infrastructure/ai/template/template.service.js';
 import { logger } from '../../infrastructure/shared/logger.js';
+import { withCurrentDateContext } from '../../infrastructure/shared/current-date-context.js';
 import type { AcademicToolsService } from '../../infrastructure/ai/tools/academic-tools.service.js';
 import { ACADEMIC_TOOLS } from '../../infrastructure/ai/tools/academic-tools.definitions.js';
 import { completeWithTools } from '../../infrastructure/ai/tool-calling-loop.js';
@@ -711,9 +712,11 @@ export class IntentRouterService {
     // Overlay the static knowledge base + strict anti-hallucination rule on top of the
     // DB-authored (Handlebars) prompt — never replace the marketing/behavior instructions,
     // only reinforce them with the single source of truth for facts + tool-usage rules.
-    const systemContent = this.knowledgeBaseOverlay
-      ? `${compiled.rendered}\n\n${this.knowledgeBaseOverlay}`
-      : compiled.rendered;
+    const systemContent = withCurrentDateContext(
+      this.knowledgeBaseOverlay
+        ? `${compiled.rendered}\n\n${this.knowledgeBaseOverlay}`
+        : compiled.rendered,
+    );
 
     const msgs: ChatMessage[] = [
       { role: 'system', content: systemContent },

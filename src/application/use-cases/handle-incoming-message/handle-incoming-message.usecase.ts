@@ -55,6 +55,7 @@ import type { AcademicToolsService } from '../../../infrastructure/ai/tools/acad
 import { ACADEMIC_TOOLS } from '../../../infrastructure/ai/tools/academic-tools.definitions.js';
 import { completeWithTools } from '../../../infrastructure/ai/tool-calling-loop.js';
 import { parseStructuredAiResponse } from '../../../infrastructure/ai/parse-structured-ai-response.js';
+import { withCurrentDateContext } from '../../../infrastructure/shared/current-date-context.js';
 import {
   MessageBatchDebouncer,
   joinBatchedUserTexts,
@@ -1521,9 +1522,11 @@ export class HandleIncomingMessageUseCase {
     // Hybrid-architecture guardrail: overlay the static knowledge base + strict anti-hallucination
     // rule on top of whatever base prompt was resolved above — never invent costs/malla/vacantes,
     // always call the tool. This mirrors IntentRouterService's behavior for the fallback path.
-    const systemPrompt = this.knowledgeBaseOverlay
-      ? `${baseSystemPrompt}\n\n${this.knowledgeBaseOverlay}`
-      : baseSystemPrompt;
+    const systemPrompt = withCurrentDateContext(
+      this.knowledgeBaseOverlay
+        ? `${baseSystemPrompt}\n\n${this.knowledgeBaseOverlay}`
+        : baseSystemPrompt,
+    );
 
     const recentMessages = conversation.getLastNMessages(CONTEXT_WINDOW_SIZE);
     const chatHistory = recentMessages.map((m) => ({

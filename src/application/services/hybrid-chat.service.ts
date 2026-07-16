@@ -2,6 +2,7 @@ import type { AiProviderPort, ChatMessage } from '../ports/ai-provider.port.js';
 import type { AcademicToolsService } from '../../infrastructure/ai/tools/academic-tools.service.js';
 import { ACADEMIC_TOOLS } from '../../infrastructure/ai/tools/academic-tools.definitions.js';
 import { completeWithTools, type ToolLoopResult } from '../../infrastructure/ai/tool-calling-loop.js';
+import { withCurrentDateContext } from '../../infrastructure/shared/current-date-context.js';
 
 export type HybridChatResult = ToolLoopResult;
 
@@ -24,7 +25,10 @@ export class HybridChatService {
    *                Do NOT include the system prompt — it is injected here.
    */
   async chat(history: ChatMessage[]): Promise<HybridChatResult> {
-    const messages: ChatMessage[] = [{ role: 'system', content: this.systemPrompt }, ...history];
+    const messages: ChatMessage[] = [
+      { role: 'system', content: withCurrentDateContext(this.systemPrompt) },
+      ...history,
+    ];
     return completeWithTools(this.aiProvider, messages, ACADEMIC_TOOLS, (name, args) =>
       this.toolsService.execute(name, args),
     );
